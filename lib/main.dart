@@ -1,67 +1,64 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:haseeb/screens/agent_chat_screen.dart';
 import 'package:haseeb/screens/home_screen.dart';
+import 'package:haseeb/screens/settings_screen.dart';
 
 void main() {
   runApp(const ProviderScope(child: MainApp()));
 }
 
-class MainApp extends ConsumerWidget {
+class MainApp extends StatelessWidget {
   const MainApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: HomeScreen(),
+      home: const MainScreen(),
     );
   }
-
-  void sendMessage(String message, WidgetRef ref) {
-    final chatStateNotifier = ref.read(chatStateNotifierProvider.notifier);
-    final logStateNotifier = ref.read(logStateNotifierProvider.notifier);
-
-    chatStateNotifier.addUserMessage(message);
-    logStateNotifier.logUserText(message);
-    chatStateNotifier.addLlmMessage(message, MessageState.complete);
-    logStateNotifier.logLlmText(message);
-  }
 }
 
-final chatStateNotifierProvider =
-    StateNotifierProvider<ChatStateNotifier, List<String>>((ref) {
-      return ChatStateNotifier();
-    });
+class MainScreen extends StatefulWidget {
+  const MainScreen({super.key});
 
-final logStateNotifierProvider =
-    StateNotifierProvider<LogStateNotifier, List<String>>((ref) {
-      return LogStateNotifier();
-    });
-
-class ChatStateNotifier extends StateNotifier<List<String>> {
-  ChatStateNotifier() : super([]);
-
-  void addUserMessage(String message) {
-    state = [...state, 'User: $message'];
-  }
-
-  void addLlmMessage(String message, MessageState state) {
-    this.state = [...this.state, 'LLM: $message'];
-  }
+  @override
+  State<MainScreen> createState() => _MainScreenState();
 }
 
-class LogStateNotifier extends StateNotifier<List<String>> {
-  LogStateNotifier() : super([]);
+class _MainScreenState extends State<MainScreen> {
+  int _currentIndex = 0;
 
-  void logUserText(String message) {
-    state = [...state, 'Log User: $message'];
-  }
+  final List<Widget> _screens = [
+    const HomeScreen(),
+    const AgentChatScreen(),
+    const SettingsScreen(),
+  ];
 
-  void logLlmText(String message) {
-    state = [...state, 'Log LLM: $message'];
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _screens[_currentIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+          BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Agent'),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings),
+            label: 'Settings',
+          ),
+        ],
+      ),
+    );
   }
 }
-
-enum MessageState { complete, streaming }
