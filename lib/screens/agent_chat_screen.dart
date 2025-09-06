@@ -824,14 +824,14 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
 
       if (kIsWeb) {
         // For web, we'll show a message for now
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Web audio transcription coming soon. Please use mobile for now.',
-            ),
-            duration: Duration(seconds: 3),
-          ),
-        );
+        // ScaffoldMessenger.of(context).showSnackBar(
+        //   const SnackBar(
+        //     content: Text(
+        //       'Web audio transcription coming soon. Please use mobile for now.',
+        //     ),
+        //     duration: Duration(seconds: 3),
+        //   ),
+        // );
         return;
       }
 
@@ -858,23 +858,23 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
           ref.read(chatProvider.notifier).setCurrentInput(transcribedText);
 
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Audio transcribed successfully'),
-                duration: Duration(seconds: 2),
-              ),
-            );
+            // ScaffoldMessenger.of(context).showSnackBar(
+            //   const SnackBar(
+            //     content: Text('Audio transcribed successfully'),
+            //     duration: Duration(seconds: 2),
+            //   ),
+            // );
           }
         } else {
           developer.log('Audio transcription failed - empty response');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Could not transcribe audio'),
-                duration: Duration(seconds: 2),
-              ),
-            );
-          }
+          // if (mounted) {
+          //   ScaffoldMessenger.of(context).showSnackBar(
+          //     const SnackBar(
+          //       content: Text('Could not transcribe audio'),
+          //       duration: Duration(seconds: 2),
+          //     ),
+          //   );
+          // }
         }
 
         // Clean up the temporary file
@@ -882,14 +882,14 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
       }
     } catch (e) {
       developer.log('Error transcribing audio', error: e);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Transcription error: $e'),
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
+      // if (mounted) {
+      //   ScaffoldMessenger.of(context).showSnackBar(
+      //     SnackBar(
+      //       content: Text('Transcription error: $e'),
+      //       duration: const Duration(seconds: 3),
+      //     ),
+      //   );
+      // }
     }
   }
 
