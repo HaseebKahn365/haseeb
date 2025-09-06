@@ -118,6 +118,13 @@ class ActivityService {
     int totalValue, {
     String? description,
   }) async {
+    // Validate inputs
+    if (type.isEmpty || title.isEmpty || totalValue <= 0) {
+      throw ArgumentError(
+        'Invalid parameters: type, title, and totalValue must be provided and valid',
+      );
+    }
+
     String id =
         '${type.toLowerCase()}_${DateTime.now().millisecondsSinceEpoch}';
 
@@ -173,54 +180,83 @@ class ActivityService {
     String attribute,
     dynamic value,
   ) async {
-    Activity? activity = getActivity(id);
-    if (activity == null) return false;
+    print(
+      '🔧 Agent: Attempting to modify activity $id attribute $attribute to $value',
+    );
 
-    switch (attribute) {
-      case 'title':
-        activity.title = value as String;
-        break;
-      case 'done_count':
-        if (activity is CountActivity) {
-          activity.doneCount = value as int;
-        } else {
-          return false;
-        }
-        break;
-      case 'done_duration':
-        if (activity is DurationActivity) {
-          activity.doneDuration = value as int;
-        } else {
-          return false;
-        }
-        break;
-      case 'total_count':
-        if (activity is CountActivity) {
-          activity.totalCount = value as int;
-        } else {
-          return false;
-        }
-        break;
-      case 'total_duration':
-        if (activity is DurationActivity) {
-          activity.totalDuration = value as int;
-        } else {
-          return false;
-        }
-        break;
-      case 'description':
-        if (activity is PlannedActivity) {
-          activity.description = value as String;
-        } else {
-          return false;
-        }
-        break;
-      default:
-        return false;
+    Activity? activity = getActivity(id);
+    if (activity == null) {
+      print('❌ Agent: Activity with ID $id not found');
+      return false;
     }
 
-    await updateActivity(activity);
-    return true;
+    try {
+      switch (attribute) {
+        case 'title':
+          activity.title = value as String;
+          print('✅ Agent: Updated title to "$value"');
+          break;
+        case 'done_count':
+          if (activity is CountActivity) {
+            activity.doneCount = value as int;
+            print('✅ Agent: Updated done_count to $value');
+          } else {
+            print('❌ Agent: Cannot modify done_count on non-CountActivity');
+            return false;
+          }
+          break;
+        case 'done_duration':
+          if (activity is DurationActivity) {
+            activity.doneDuration = value as int;
+            print('✅ Agent: Updated done_duration to ${value}min');
+          } else {
+            print(
+              '❌ Agent: Cannot modify done_duration on non-DurationActivity',
+            );
+            return false;
+          }
+          break;
+        case 'total_count':
+          if (activity is CountActivity) {
+            activity.totalCount = value as int;
+            print('✅ Agent: Updated total_count to $value');
+          } else {
+            print('❌ Agent: Cannot modify total_count on non-CountActivity');
+            return false;
+          }
+          break;
+        case 'total_duration':
+          if (activity is DurationActivity) {
+            activity.totalDuration = value as int;
+            print('✅ Agent: Updated total_duration to ${value}min');
+          } else {
+            print(
+              '❌ Agent: Cannot modify total_duration on non-DurationActivity',
+            );
+            return false;
+          }
+          break;
+        case 'description':
+          if (activity is PlannedActivity) {
+            activity.description = value as String;
+            print('✅ Agent: Updated description to "$value"');
+          } else {
+            print('❌ Agent: Cannot modify description on non-PlannedActivity');
+            return false;
+          }
+          break;
+        default:
+          print('❌ Agent: Unknown attribute "$attribute"');
+          return false;
+      }
+
+      await updateActivity(activity);
+      print('✅ Agent: Activity $id updated successfully');
+      return true;
+    } catch (e) {
+      print('❌ Agent: Error modifying activity: $e');
+      return false;
+    }
   }
 
   // CRUD for CustomLists

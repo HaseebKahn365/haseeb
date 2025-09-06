@@ -8,8 +8,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
+import '../models/activity.dart';
+import '../models/custom_list.dart';
+import '../providers/activity_provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/gemini.dart';
+import '../services/activity_service.dart';
 import '../widgets/activity_card_widget.dart';
 import '../widgets/export_data_widget.dart';
 import '../widgets/markdown_widget.dart';
@@ -47,9 +51,13 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
   final AudioRecorder _audioRecorder = AudioRecorder();
   bool _isRecording = false;
 
+  late ActivityService _activityService;
+
   @override
   void initState() {
     super.initState();
+    _activityService = ref.read(activityServiceProvider);
+
     // Initialize text controller with current input from global state
     final chatState = ref.read(chatProvider);
     _controller.text = chatState.currentInput;
@@ -665,6 +673,127 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
           filename:
               'activity_data_${DateTime.now().millisecondsSinceEpoch}.csv',
         );
+
+      case 'modify_activity':
+        final args = call.args;
+        final id = args['id'] as String?;
+        final attribute = args['attribute'] as String?;
+        final value = args['value'];
+
+        if (id == null || attribute == null) {
+          developer.log('Missing required parameters for modify_activity');
+          return null;
+        }
+
+        try {
+          final success = await _activityService.modifyActivityAttribute(
+            id,
+            attribute,
+            value,
+          );
+          developer.log(
+            'Modified activity $id attribute $attribute to $value: $success',
+          );
+          if (success) {
+            // Return a simple confirmation widget
+            return MarkdownWidget(content: '✅ Activity updated successfully!');
+          } else {
+            return MarkdownWidget(
+              content:
+                  '❌ Failed to update activity. Please check the activity ID and attribute.',
+            );
+          }
+        } catch (e) {
+          developer.log('Error modifying activity: $e');
+          return MarkdownWidget(content: '❌ Error updating activity: $e');
+        }
+
+      case 'fetch_activity_data':
+        final args = call.args;
+        final filter = args['filter'] as Map<String, dynamic>? ?? {};
+
+        try {
+          final activities = _activityService.getActivitiesByFilters(filter);
+          developer.log(
+            'Fetched ${activities.length} activities with filter: $filter',
+          );
+
+          if (activities.isEmpty) {
+            return MarkdownWidget(
+              content: 'No activities found matching the criteria.',
+            );
+          }
+
+          // Return a summary widget
+          return MarkdownWidget(
+            content:
+                '📊 Found ${activities.length} activities:\n${activities.map((a) => '- ${a.title} (${a.runtimeType.toString().replaceAll('Activity', '').toLowerCase()})').join('\n')}',
+          );
+        } catch (e) {
+          developer.log('Error fetching activities: $e');
+          return MarkdownWidget(content: '❌ Error fetching activities: $e');
+        }
+
+      case 'create_activity':
+        final args = call.args;
+        final type = args['type'] as String?;
+        final title = args['title'] as String?;
+        final totalValue = (args['total_value'] as num?)?.toInt();
+
+        if (type == null || title == null || totalValue == null) {
+          developer.log('Missing required parameters for create_activity');
+          return null;
+        }
+
+        try {
+          final id = await _activityService.createNewActivity(
+            type,
+            title,
+            totalValue,
+          );
+          developer.log('Created new $type activity: $title with ID: $id');
+          return MarkdownWidget(
+            content: '✅ Created new $type activity: "$title" (ID: $id)',
+          );
+        } catch (e) {
+          developer.log('Error creating activity: $e');
+          return MarkdownWidget(content: '❌ Error creating activity: $e');
+        }
+
+      case 'create_custom_list':
+        final args = call.args;
+        final title = args['title'] as String?;
+        final activityIds =
+            (args['activities'] as List<dynamic>?)
+                ?.map((e) => e as String)
+                .toList() ??
+            [];
+
+        if (title == null) {
+          developer.log('Missing title for create_custom_list');
+          return null;
+        }
+
+        try {
+          // Fetch activities by IDs
+          final activities = activityIds
+              .map((id) => _activityService.getActivity(id))
+              .where((activity) => activity != null)
+              .cast<Activity>()
+              .toList();
+          final customList = CustomList(title: title, activities: activities);
+          await _activityService.addCustomList(customList);
+          developer.log(
+            'Created custom list: $title with ${activities.length} activities',
+          );
+          return MarkdownWidget(
+            content:
+                '✅ Created custom list: "$title" with ${activities.length} activities',
+          );
+        } catch (e) {
+          developer.log('Error creating custom list: $e');
+          return MarkdownWidget(content: '❌ Error creating custom list: $e');
+        }
 
       default:
         return null;
