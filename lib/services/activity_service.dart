@@ -100,11 +100,12 @@ class ActivityService {
     }
 
     if (filters.containsKey('title_contains')) {
-      String searchTerm = filters['title_contains'].toLowerCase();
+      String rawSearch = filters['title_contains'] as String;
+      String normalize(String s) =>
+          s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+      final searchTerm = normalize(rawSearch);
       activities = activities
-          .where(
-            (activity) => activity.title.toLowerCase().contains(searchTerm),
-          )
+          .where((activity) => normalize(activity.title).contains(searchTerm))
           .toList();
     }
 
@@ -117,6 +118,7 @@ class ActivityService {
     String title,
     int totalValue, {
     String? description,
+    String? plannedType,
   }) async {
     // Validate inputs
     if (type.isEmpty || title.isEmpty || totalValue <= 0) {
@@ -152,16 +154,24 @@ class ActivityService {
         '🔧 Agent: Created DURATION activity "$title" with target ${totalValue}min',
       );
     } else if (type == 'PLANNED') {
+      // Determine the intended activity type for the planned activity
+      ActivityType activityType = ActivityType.DURATION; // Default to DURATION
+      if (plannedType == 'COUNT') {
+        activityType = ActivityType.COUNT;
+      } else if (plannedType == 'DURATION') {
+        activityType = ActivityType.DURATION;
+      }
+
       activity = PlannedActivity(
         id: id,
         title: title,
         timestamp: DateTime.now(),
         description: description ?? '',
-        type: ActivityType.COUNT, // Default to COUNT, can be modified later
+        type: activityType,
         estimatedCompletionDuration: totalValue,
       );
       print(
-        '🔧 Agent: Created PLANNED activity "$title" with estimated ${totalValue}min',
+        '🔧 Agent: Created PLANNED activity "$title" with estimated ${totalValue}min (type: ${activityType.toString().split('.').last})',
       );
     } else {
       throw ArgumentError(

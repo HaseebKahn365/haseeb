@@ -18,7 +18,7 @@ final geminiModelProvider = FutureProvider<GenerativeModel>((ref) async {
   final geminiTools = ref.watch(geminiToolsProvider);
 
   final model = FirebaseAI.googleAI().generativeModel(
-    model: 'gemini-2.0-flash',
+    model: 'gemini-2.5-flash',
     systemInstruction: Content.system(systemPrompt),
     tools: geminiTools.tools,
   );

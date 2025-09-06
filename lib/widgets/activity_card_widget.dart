@@ -71,14 +71,16 @@ class ActivityCardWidget extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        type == 'COUNT' ? 'Repetitions' : 'Duration (min)',
+                        type.toUpperCase() == 'COUNT'
+                            ? 'Repetitions'
+                            : 'Duration (min)',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '$done / $total ${type == 'COUNT' ? '' : 'min'}',
+                        '$done / $total ${type.toUpperCase() == 'COUNT' ? '' : 'min'}',
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                           fontWeight: FontWeight.w500,
                         ),

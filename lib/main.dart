@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:haseeb/models/activity.dart';
+import 'package:haseeb/models/activity_type.dart';
 import 'package:haseeb/models/count_activity.dart';
 import 'package:haseeb/models/custom_list.dart';
 import 'package:haseeb/models/duration_activity.dart';
@@ -18,6 +19,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Hive.initFlutter();
   Hive.registerAdapter(ActivityAdapter());
+  Hive.registerAdapter(ActivityTypeAdapter());
   Hive.registerAdapter(CountActivityAdapter());
   Hive.registerAdapter(DurationActivityAdapter());
   Hive.registerAdapter(PlannedActivityAdapter());

@@ -9,7 +9,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 import '../models/activity.dart';
+import '../models/count_activity.dart';
 import '../models/custom_list.dart';
+import '../models/duration_activity.dart';
+import '../models/planned_activity.dart';
 import '../providers/activity_provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/gemini.dart';
@@ -52,6 +55,112 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
   bool _isRecording = false;
 
   late ActivityService _activityService;
+
+  // Task memory system - tracks completed operations for context
+  final List<Map<String, dynamic>> _taskMemory = [];
+
+  // Normalize strings for flexible matching (remove non-alphanumerics, lowercase)
+  String _normalize(String s) =>
+      s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+
+  // Add task to memory for agent context
+  void _addToTaskMemory(String action, Map<String, dynamic> details) {
+    _taskMemory.add({
+      'timestamp': DateTime.now().toIso8601String(),
+      'action': action,
+      'details': details,
+    });
+    // Keep only last 10 tasks
+    if (_taskMemory.length > 10) _taskMemory.removeAt(0);
+    developer.log('Added to task memory: $action - $details');
+  }
+
+  // Direct database activity search (no caching)
+  List<Map<String, dynamic>> _findActivitiesByKeyword(String keyword) {
+    final all = _activityService.getAllActivities();
+    final activitiesData = all
+        .map(
+          (a) => {
+            'title': a.title,
+            'id': a.id,
+            'type': a.runtimeType
+                .toString()
+                .replaceAll('Activity', '')
+                .toLowerCase(),
+            'total': a is CountActivity
+                ? a.totalCount
+                : a is DurationActivity
+                ? a.totalDuration
+                : a is PlannedActivity
+                ? a.estimatedCompletionDuration
+                : 0,
+            'done': a is CountActivity
+                ? a.doneCount
+                : a is DurationActivity
+                ? a.doneDuration
+                : 0, // Planned activities don't have "done" progress
+            'timestamp': a.timestamp.toIso8601String(),
+            if (a is PlannedActivity) 'description': a.description,
+            if (a is PlannedActivity)
+              'planned_type': a.type.toString().split('.').last,
+          },
+        )
+        .toList();
+
+    final k = _normalize(keyword);
+    final matches = activitiesData.where((a) {
+      final title = (a['title'] as String?) ?? '';
+      return _normalize(title).contains(k);
+    }).toList();
+
+    developer.log('Found ${matches.length} activities matching "$keyword"');
+    return matches;
+  }
+
+  // Get all activities formatted for agent tools (no caching)
+  List<Map<String, dynamic>> _getAllActivitiesForAgent() {
+    final all = _activityService.getAllActivities();
+    return all
+        .map(
+          (a) => {
+            'title': a.title,
+            'id': a.id,
+            'type': a.runtimeType
+                .toString()
+                .replaceAll('Activity', '')
+                .toLowerCase(),
+            'total': a is CountActivity
+                ? a.totalCount
+                : a is DurationActivity
+                ? a.totalDuration
+                : a is PlannedActivity
+                ? a.estimatedCompletionDuration
+                : 0,
+            'done': a is CountActivity
+                ? a.doneCount
+                : a is DurationActivity
+                ? a.doneDuration
+                : 0, // Planned activities don't have "done" progress
+            'timestamp': a.timestamp.toIso8601String(),
+            if (a is PlannedActivity) 'description': a.description,
+            if (a is PlannedActivity)
+              'planned_type': a.type.toString().split('.').last,
+          },
+        )
+        .toList();
+  }
+
+  // Find best activity match using direct database approach
+  Map<String, dynamic>? _findBestActivityMatch(String keyword) {
+    final matches = _findActivitiesByKeyword(keyword);
+    if (matches.isEmpty) return null;
+
+    // Return the most recent match or first if multiple
+    matches.sort(
+      (a, b) => (b['timestamp'] as String).compareTo(a['timestamp'] as String),
+    );
+    return matches.first;
+  }
 
   @override
   void initState() {
@@ -632,10 +741,554 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
           ),
         );
     _scrollToBottom();
+
+    // Proactive activity updates - check if user message contains update patterns
+    await _performProactiveUpdate();
+  }
+
+  // Proactive update logic - collection-based approach with flexible parsing
+  Future<void> _performProactiveUpdate() async {
+    try {
+      final chatState = ref.read(chatProvider);
+      final lastUser = chatState.messages.lastWhere(
+        (m) => m.isUser,
+        orElse: () => ChatMessage(
+          id: '',
+          text: '',
+          isUser: true,
+          timestamp: DateTime.now(),
+        ),
+      );
+      final userText = lastUser.text.toLowerCase();
+
+      if (userText.isEmpty) return;
+
+      // Try smart parsing first for more natural language processing
+      final result = await _parseAndUpdateActivity(userText);
+      if (result == null) {
+        // Successfully updated via smart parsing
+        return;
+      }
+
+      // Fall back to pattern-based matching for specific cases
+      // Look for percentage patterns like "50%" or "50 percent"
+      final percentMatch = RegExp(
+        r'(\d{1,3})\s*(?:%|percent)',
+      ).firstMatch(userText);
+
+      // Look for absolute numbers with activity keywords
+      final numberMatch = RegExp(r'(\d{1,6})').firstMatch(userText);
+      final keywordMatch = RegExp(
+        r'pushup|pushups|push-ups|run|running|situp|sit-ups|sit ups|squats|burpees|plank|exercise',
+      ).firstMatch(userText);
+
+      // Look for zero/reset patterns
+      final zeroMatch = RegExp(
+        r'(zero|0|none|not done|not|no)\s*(pushup|pushups|push-ups|run|running|situp|sit-ups|sit ups|squats|burpees|plank|exercise)',
+      ).firstMatch(userText);
+
+      // Look for duration patterns like "60 minutes" or "2 hours"
+      final durationMatch = RegExp(
+        r'(\d{1,4})\s*(minute|minutes|hour|hours|min|mins|hr|hrs)',
+      ).firstMatch(userText);
+      final durationKeywordMatch = RegExp(
+        r'study|studying|read|reading|meditation|meditate|work|working|exercise|exercising|time|book|learning',
+      ).firstMatch(userText);
+
+      Map<String, dynamic>? candidate;
+
+      if (percentMatch != null) {
+        final percent = int.parse(percentMatch.group(1)!);
+        // Look for any COUNT activity for percentage updates
+        final countActivities = _findActivitiesByKeyword('')
+            .where(
+              (a) =>
+                  (a['type'] as String).toLowerCase() == 'count' &&
+                  (a['total'] as int?) != null &&
+                  (a['total'] as int) > 0,
+            )
+            .toList();
+
+        if (countActivities.isNotEmpty) {
+          candidate = countActivities.first;
+          final total = candidate['total'] as int;
+          final desiredCount = (total * percent / 100).round();
+
+          await _updateActivityAndNotify(
+            candidate,
+            'done_count',
+            desiredCount,
+            'Updated activity to $percent%.',
+          );
+        }
+      } else if (zeroMatch != null) {
+        // Handle zero/reset patterns
+        final keyword =
+            zeroMatch.group(2) ??
+            'pushup'; // Default to pushup if no specific keyword
+
+        // Find activity matching the keyword using collection-based approach
+        candidate = _findBestActivityMatch(keyword);
+
+        if (candidate != null) {
+          await _updateActivityAndNotify(
+            candidate,
+            'done_count',
+            0,
+            '✅ Reset "${candidate['title']}" to 0 done.',
+          );
+        }
+      } else if (durationMatch != null && durationKeywordMatch != null) {
+        // Handle duration-based updates
+        final durationValue = int.parse(durationMatch.group(1)!);
+        final durationUnit = durationMatch.group(2)!.toLowerCase();
+        final keyword = durationKeywordMatch.group(0)!;
+
+        // Convert to minutes if needed
+        int minutes = durationValue;
+        if (durationUnit.startsWith('hour') || durationUnit.startsWith('hr')) {
+          minutes = durationValue * 60;
+        }
+
+        // Find duration activity matching the keyword
+        candidate = _findActivitiesByKeyword(keyword)
+            .where((a) => (a['type'] as String).toLowerCase() == 'duration')
+            .firstOrNull;
+
+        if (candidate != null) {
+          await _updateActivityAndNotify(
+            candidate,
+            'done_duration',
+            minutes,
+            '✅ Updated "${candidate['title']}" to $minutes minutes done.',
+          );
+        }
+      } else if (numberMatch != null && keywordMatch != null) {
+        final numVal = int.parse(numberMatch.group(1)!);
+        final keyword = keywordMatch.group(0)!;
+
+        // Find activity matching the keyword using collection-based approach
+        candidate = _findBestActivityMatch(keyword);
+
+        if (candidate != null) {
+          await _updateActivityAndNotify(
+            candidate,
+            'done_count',
+            numVal,
+            '✅ Updated "${candidate['title']}" to $numVal done.',
+          );
+        }
+      }
+    } catch (e) {
+      developer.log('Error during proactive update: $e');
+    }
+  }
+
+  // Helper to update activity and send notification
+  Future<void> _updateActivityAndNotify(
+    Map<String, dynamic> activity,
+    String attribute,
+    dynamic value,
+    String message,
+  ) async {
+    final success = await _activityService.modifyActivityAttribute(
+      activity['id'] as String,
+      attribute,
+      value,
+    );
+
+    if (success) {
+      _addToTaskMemory('proactive_update', {
+        'activity_id': activity['id'],
+        'attribute': attribute,
+        'value': value,
+      });
+
+      // Get updated activity from database
+      final updated = _activityService.getActivity(activity['id'] as String);
+
+      final widget = ActivityCardWidget(
+        title: updated?.title ?? activity['title'] as String,
+        total: updated is CountActivity
+            ? updated.totalCount
+            : updated is DurationActivity
+            ? updated.totalDuration
+            : activity['total'] as int,
+        done: updated is CountActivity
+            ? updated.doneCount
+            : updated is DurationActivity
+            ? updated.doneDuration
+            : value as int,
+        timestamp: updated?.timestamp ?? DateTime.now(),
+        type: activity['type'] as String? ?? 'COUNT',
+      );
+
+      ref
+          .read(chatProvider.notifier)
+          .addMessage(
+            ChatMessage(
+              id: DateTime.now().millisecondsSinceEpoch.toString(),
+              text: message,
+              isUser: false,
+              timestamp: DateTime.now(),
+              widgets: [widget],
+            ),
+          );
+      _scrollToBottom();
+    } else {
+      developer.log('Proactive update failed for ${activity['id']}');
+    }
+  }
+
+  // Intelligent parsing of natural language updates
+  Future<Widget?> _parseAndUpdateActivity(String description) async {
+    final normalizedDesc = description.toLowerCase();
+
+    // Check for completion keywords
+    final completionKeywords = [
+      'finished',
+      'completed',
+      'done all',
+      'accomplished',
+      'achieved',
+      'complete',
+      'finish',
+    ];
+    final hasCompletionKeyword = completionKeywords.any(
+      (keyword) => normalizedDesc.contains(keyword),
+    );
+
+    // Check for incremental keywords (add more, additional progress)
+    final incrementalKeywords = ['more', 'additional', 'extra', 'further'];
+    final isIncremental = incrementalKeywords.any(
+      (keyword) => normalizedDesc.contains(keyword),
+    );
+
+    // Look for duration patterns
+    final durationMatch = RegExp(
+      r'(\d{1,4})\s*(minute|minutes|hour|hours|min|mins|hr|hrs)',
+    ).firstMatch(normalizedDesc);
+
+    // Look for count patterns
+    final countMatch = RegExp(r'(\d{1,6})').firstMatch(normalizedDesc);
+
+    // Extract potential activity keywords from the description
+    final words = normalizedDesc.split(RegExp(r'\s+'));
+    final potentialKeywords = words.where((word) => word.length > 2).toList();
+
+    // Find the best matching activity
+    Map<String, dynamic>? bestMatch;
+    for (final keyword in potentialKeywords) {
+      final matches = _findActivitiesByKeyword(keyword);
+      if (matches.isNotEmpty) {
+        bestMatch = matches.first;
+        break;
+      }
+    }
+
+    if (bestMatch == null) {
+      return MarkdownWidget(
+        content:
+            '❌ Could not find a matching activity. Available activities:\n\n${_getAllActivityNames()}',
+      );
+    }
+
+    // Handle completion keywords - mark activity as fully completed
+    if (hasCompletionKeyword) {
+      final type = bestMatch['type'] as String?;
+      if (type == 'duration') {
+        final totalDuration = bestMatch['total_duration'] as int? ?? 0;
+        await _updateActivityAndNotify(
+          bestMatch,
+          'done_duration',
+          totalDuration,
+          '🎉 Marked "${bestMatch['title']}" as completed! ($totalDuration/$totalDuration minutes)',
+        );
+        return null;
+      } else if (type == 'count') {
+        final totalCount = bestMatch['total_count'] as int? ?? 0;
+        await _updateActivityAndNotify(
+          bestMatch,
+          'done_count',
+          totalCount,
+          '🎉 Marked "${bestMatch['title']}" as completed! ($totalCount/$totalCount done)',
+        );
+        return null;
+      }
+    }
+
+    // Determine what to update based on activity type and description patterns
+    if (durationMatch != null && bestMatch['type'] == 'duration') {
+      final value = int.parse(durationMatch.group(1)!);
+      final unit = durationMatch.group(2)!.toLowerCase();
+
+      int minutes = value;
+      if (unit.startsWith('hour') || unit.startsWith('hr')) {
+        minutes = value * 60;
+      }
+
+      // Handle incremental updates
+      if (isIncremental) {
+        final currentDone = bestMatch['done_duration'] as int? ?? 0;
+        minutes = currentDone + minutes;
+      }
+
+      // Check for completion
+      final totalDuration = bestMatch['total_duration'] as int? ?? 0;
+      String message;
+      if (minutes >= totalDuration && totalDuration > 0) {
+        message =
+            '🎉 Congratulations! You completed "${bestMatch['title']}"! ($minutes/$totalDuration minutes)';
+      } else if (isIncremental) {
+        final addedAmount = value;
+        final unit = durationMatch.group(2)!.toLowerCase();
+        if (unit.startsWith('hour') || unit.startsWith('hr')) {
+          message =
+              '✅ Added $value ${unit.startsWith('hour') ? 'hours' : 'hrs'} to "${bestMatch['title']}" - Total: $minutes minutes done.';
+        } else {
+          message =
+              '✅ Added $addedAmount minutes to "${bestMatch['title']}" - Total: $minutes minutes done.';
+        }
+      } else {
+        message = '✅ Updated "${bestMatch['title']}" to $minutes minutes done.';
+      }
+
+      await _updateActivityAndNotify(
+        bestMatch,
+        'done_duration',
+        minutes,
+        message,
+      );
+
+      return null; // Notification handled by _updateActivityAndNotify
+    } else if (countMatch != null && bestMatch['type'] == 'count') {
+      final value = int.parse(countMatch.group(1)!);
+
+      // Handle incremental updates
+      int finalCount = value;
+      if (isIncremental) {
+        final currentDone = bestMatch['done_count'] as int? ?? 0;
+        finalCount = currentDone + value;
+      }
+
+      // Check for completion
+      final totalCount = bestMatch['total_count'] as int? ?? 0;
+      String message;
+      if (finalCount >= totalCount && totalCount > 0) {
+        message =
+            '🎉 Congratulations! You completed "${bestMatch['title']}"! ($finalCount/$totalCount done)';
+      } else if (isIncremental) {
+        message =
+            '✅ Added $value to "${bestMatch['title']}" - Total: $finalCount done.';
+      } else {
+        message = '✅ Updated "${bestMatch['title']}" to $finalCount done.';
+      }
+
+      await _updateActivityAndNotify(
+        bestMatch,
+        'done_count',
+        finalCount,
+        message,
+      );
+
+      return null; // Notification handled by _updateActivityAndNotify
+    }
+
+    return MarkdownWidget(
+      content:
+          '❌ Could not determine what to update. Please specify a number with units (e.g., "60 minutes") or a count.',
+    );
+  }
+
+  String _getAllActivityNames() {
+    final allActivities = _getAllActivitiesForAgent();
+    return allActivities
+        .map((a) => '• ${a['title']} (${a['type']?.toString().toUpperCase()})')
+        .join('\n');
   }
 
   Future<Widget?> _executeFunctionCall(FunctionCall call) async {
     switch (call.name) {
+      case 'find_activity':
+        final args = call.args;
+        final keyword = args['keyword'] as String?;
+
+        if (keyword == null || keyword.isEmpty) {
+          developer.log('Missing keyword for find_activity');
+          return MarkdownWidget(
+            content: '❌ Please provide a keyword to search for activities.',
+          );
+        }
+
+        try {
+          final matches = _findActivitiesByKeyword(keyword);
+
+          _addToTaskMemory('find_activity', {
+            'keyword': keyword,
+            'results_count': matches.length,
+          });
+
+          if (matches.isEmpty) {
+            final totalActivities = _getAllActivitiesForAgent().length;
+            return MarkdownWidget(
+              content:
+                  '❌ No activities found matching "$keyword".\n\n**Available activities:** $totalActivities total in collection.',
+            );
+          }
+
+          // Return detailed activity information with exact IDs
+          final activityList = matches
+              .map(
+                (data) =>
+                    '**${data['title']}** (ID: `${data['id']}`, Type: ${data['type']?.toString().toUpperCase()}, Progress: ${data['done']}/${data['total']})',
+              )
+              .join('\n');
+
+          return MarkdownWidget(
+            content:
+                'Found ${matches.length} activities matching "$keyword":\n\n$activityList\n\n✅ Use the exact ID above with `modify_activity` to update progress.',
+          );
+        } catch (e) {
+          developer.log('Error finding activities: $e');
+          return MarkdownWidget(content: '❌ Error searching activities: $e');
+        }
+
+      case 'get_active_activities':
+        try {
+          final allActivities = _getAllActivitiesForAgent();
+          final activeActivities = allActivities.where((a) {
+            final total = a['total'] as int? ?? 0;
+            final done = a['done'] as int? ?? 0;
+            return done < total; // Not completed yet
+          }).toList();
+
+          _addToTaskMemory('get_active_activities', {
+            'results_count': activeActivities.length,
+          });
+
+          if (activeActivities.isEmpty) {
+            return MarkdownWidget(
+              content:
+                  '🎉 Great! You have no active activities - everything is completed!',
+            );
+          }
+
+          final activityList = activeActivities
+              .map(
+                (data) =>
+                    '**${data['title']}** (${data['type']?.toString().toUpperCase()}) - Progress: ${data['done']}/${data['total']} (${((data['done'] as int) / (data['total'] as int) * 100).round()}%)',
+              )
+              .join('\n');
+
+          return MarkdownWidget(
+            content:
+                '📋 **Active Activities** (${activeActivities.length} in progress):\n\n$activityList',
+          );
+        } catch (e) {
+          developer.log('Error getting active activities: $e');
+          return MarkdownWidget(
+            content: '❌ Error getting active activities: $e',
+          );
+        }
+
+      case 'get_completed_activities':
+        try {
+          final allActivities = _getAllActivitiesForAgent();
+          final completedActivities = allActivities.where((a) {
+            final total = a['total'] as int? ?? 0;
+            final done = a['done'] as int? ?? 0;
+            return done >= total; // Completed
+          }).toList();
+
+          _addToTaskMemory('get_completed_activities', {
+            'results_count': completedActivities.length,
+          });
+
+          if (completedActivities.isEmpty) {
+            return MarkdownWidget(
+              content:
+                  '📝 No completed activities yet. Keep working on your goals!',
+            );
+          }
+
+          final activityList = completedActivities
+              .map(
+                (data) =>
+                    '✅ **${data['title']}** (${data['type']?.toString().toUpperCase()}) - ${data['done']}/${data['total']}',
+              )
+              .join('\n');
+
+          return MarkdownWidget(
+            content:
+                '🏆 **Completed Activities** (${completedActivities.length} achievements):\n\n$activityList',
+          );
+        } catch (e) {
+          developer.log('Error getting completed activities: $e');
+          return MarkdownWidget(
+            content: '❌ Error getting completed activities: $e',
+          );
+        }
+
+      case 'get_all_activities':
+        try {
+          final allActivities = _getAllActivitiesForAgent();
+
+          _addToTaskMemory('get_all_activities', {
+            'results_count': allActivities.length,
+          });
+
+          if (allActivities.isEmpty) {
+            return MarkdownWidget(
+              content:
+                  '📝 No activities found. Create some activities to get started!',
+            );
+          }
+
+          final activityList = allActivities
+              .map((data) {
+                final status = (data['done'] as int) >= (data['total'] as int)
+                    ? '✅'
+                    : '⏳';
+                return '$status **${data['title']}** (${data['type']?.toString().toUpperCase()}) - ${data['done']}/${data['total']} (ID: `${data['id']}`)';
+              })
+              .join('\n');
+
+          return MarkdownWidget(
+            content:
+                '📋 **All Activities** (${allActivities.length} total):\n\n$activityList',
+          );
+        } catch (e) {
+          developer.log('Error getting all activities: $e');
+          return MarkdownWidget(content: '❌ Error getting all activities: $e');
+        }
+
+      case 'smart_update_activity':
+        final args = call.args;
+        final description = args['description'] as String?;
+
+        if (description == null || description.isEmpty) {
+          return MarkdownWidget(
+            content: '❌ Please provide a description of what to update.',
+          );
+        }
+
+        try {
+          // Parse the description intelligently
+          final result = await _parseAndUpdateActivity(description);
+
+          if (result != null) {
+            return result;
+          } else {
+            return MarkdownWidget(
+              content:
+                  '❌ Could not understand the update request. Please be more specific about which activity and what value to update.',
+            );
+          }
+        } catch (e) {
+          developer.log('Error in smart update: $e');
+          return MarkdownWidget(content: '❌ Error processing update: $e');
+        }
+
       case 'display_radial_bar':
         final args = call.args;
         return RadialBarWidget(
@@ -694,7 +1347,14 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
           developer.log(
             'Modified activity $id attribute $attribute to $value: $success',
           );
+
           if (success) {
+            _addToTaskMemory('modify_activity', {
+              'id': id,
+              'attribute': attribute,
+              'value': value,
+            });
+
             // Return a simple confirmation widget
             return MarkdownWidget(content: '✅ Activity updated successfully!');
           } else {
@@ -713,21 +1373,74 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
         final filter = args['filter'] as Map<String, dynamic>? ?? {};
 
         try {
-          final activities = _activityService.getActivitiesByFilters(filter);
+          // Get all activities directly from database
+          List<Map<String, dynamic>> activities = _getAllActivitiesForAgent();
+
+          // Apply filters to the collection (not as primary lookup)
+          if (filter.containsKey('type')) {
+            final type = filter['type'] as String;
+            activities = activities
+                .where(
+                  (a) =>
+                      (a['type'] as String).toUpperCase() == type.toUpperCase(),
+                )
+                .toList();
+          }
+
+          if (filter.containsKey('title_contains') &&
+              (filter['title_contains'] as String).isNotEmpty) {
+            final searchTerm = _normalize(filter['title_contains'] as String);
+            activities = activities
+                .where(
+                  (a) => _normalize(a['title'] as String).contains(searchTerm),
+                )
+                .toList();
+          }
+
+          if (filter.containsKey('completion_status')) {
+            final status = filter['completion_status'] as String;
+            if (status == 'completed') {
+              activities = activities.where((a) {
+                final total = (a['total'] as int?) ?? 0;
+                final done = (a['done'] as int?) ?? 0;
+                return total > 0 && done >= total;
+              }).toList();
+            } else if (status == 'in_progress') {
+              activities = activities.where((a) {
+                final total = (a['total'] as int?) ?? 0;
+                final done = (a['done'] as int?) ?? 0;
+                return total > 0 && done < total;
+              }).toList();
+            }
+          }
+
+          _addToTaskMemory('fetch_activity_data', {
+            'filter': filter,
+            'results_count': activities.length,
+          });
+
           developer.log(
-            'Fetched ${activities.length} activities with filter: $filter',
+            'Collection-based fetch: ${activities.length} activities',
           );
 
           if (activities.isEmpty) {
+            final totalActivities = _getAllActivitiesForAgent().length;
             return MarkdownWidget(
-              content: 'No activities found matching the criteria.',
+              content:
+                  'No activities found matching the criteria.\n\n**Available activities:** $totalActivities total in collection.',
             );
           }
 
-          // Return a summary widget
+          final activityList = activities
+              .map(
+                (data) =>
+                    'TITLE: ${data['title']} | ID: ${data['id']} | TYPE: ${data['type']} | PROGRESS: ${data['done']}/${data['total']}',
+              )
+              .join('\n');
+
           return MarkdownWidget(
             content:
-                '📊 Found ${activities.length} activities:\n${activities.map((a) => '- ${a.title} (${a.runtimeType.toString().replaceAll('Activity', '').toLowerCase()})').join('\n')}',
+                'Found ${activities.length} activities:\n```\n$activityList\n```\n\n**To modify an activity:** Use the exact ID from "ID: " (e.g., "count_1725739200000") in the modify_activity tool.',
           );
         } catch (e) {
           developer.log('Error fetching activities: $e');
@@ -739,6 +1452,9 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
         final type = args['type'] as String?;
         final title = args['title'] as String?;
         final totalValue = (args['total_value'] as num?)?.toInt();
+        final description = args['description'] as String? ?? '';
+        final isPlanned = args['is_planned'] as bool? ?? false;
+        final plannedType = args['planned_type'] as String?;
 
         if (type == null || title == null || totalValue == null) {
           developer.log('Missing required parameters for create_activity');
@@ -746,18 +1462,131 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
         }
 
         try {
-          final id = await _activityService.createNewActivity(
-            type,
-            title,
-            totalValue,
-          );
-          developer.log('Created new $type activity: $title with ID: $id');
+          String id;
+          if (isPlanned) {
+            // Create a planned activity
+            if (plannedType == null) {
+              return MarkdownWidget(
+                content:
+                    '❌ planned_type is required when creating planned activities',
+              );
+            }
+            id = await _activityService.createNewActivity(
+              'PLANNED',
+              title,
+              totalValue,
+              description: description,
+              plannedType: plannedType,
+            );
+            developer.log('Created new PLANNED activity: $title with ID: $id');
+          } else {
+            // Create regular activity
+            id = await _activityService.createNewActivity(
+              type,
+              title,
+              totalValue,
+              description: description,
+            );
+            developer.log('Created new $type activity: $title with ID: $id');
+          }
+
+          _addToTaskMemory('create_activity', {
+            'type': isPlanned ? 'PLANNED' : type,
+            'title': title,
+            'total_value': totalValue,
+            'id': id,
+          });
+
+          final activityTypeDisplay = isPlanned ? 'planned' : type;
           return MarkdownWidget(
-            content: '✅ Created new $type activity: "$title" (ID: $id)',
+            content:
+                '✅ Created new $activityTypeDisplay activity: "$title" (ID: $id)',
           );
         } catch (e) {
           developer.log('Error creating activity: $e');
           return MarkdownWidget(content: '❌ Error creating activity: $e');
+        }
+
+      case 'get_planned_activities':
+        try {
+          final allActivities = _getAllActivitiesForAgent();
+          final plannedActivities = allActivities.where((a) {
+            return a['type'] == 'planned';
+          }).toList();
+
+          _addToTaskMemory('get_planned_activities', {
+            'results_count': plannedActivities.length,
+          });
+
+          if (plannedActivities.isEmpty) {
+            return MarkdownWidget(
+              content:
+                  '📅 No planned activities found. Create some planned activities to organize your future goals!',
+            );
+          }
+
+          final activityList = plannedActivities
+              .map(
+                (data) =>
+                    '📋 **${data['title']}** (ID: `${data['id']}`) - Estimated: ${data['total']} minutes\n   Description: ${data['description'] ?? 'No description'}',
+              )
+              .join('\n\n');
+
+          return MarkdownWidget(
+            content:
+                '📅 **Planned Activities** (${plannedActivities.length} planned):\n\n$activityList',
+          );
+        } catch (e) {
+          developer.log('Error getting planned activities: $e');
+          return MarkdownWidget(
+            content: '❌ Error getting planned activities: $e',
+          );
+        }
+
+      case 'start_planned_activity':
+        final args = call.args;
+        final plannedId = args['planned_id'] as String?;
+        final targetValue = (args['target_value'] as num?)?.toInt();
+
+        if (plannedId == null || targetValue == null) {
+          return MarkdownWidget(
+            content:
+                '❌ Please provide planned_id and target_value to start a planned activity.',
+          );
+        }
+
+        try {
+          final plannedActivity = _activityService.getActivity(plannedId);
+          if (plannedActivity == null) {
+            return MarkdownWidget(
+              content: '❌ Planned activity with ID "$plannedId" not found.',
+            );
+          }
+
+          // For now, just create a new activity based on the planned one
+          // In a full implementation, you might want to move the planned activity
+          final newType =
+              'DURATION'; // Could be determined from planned activity type
+          final newId = await _activityService.createNewActivity(
+            newType,
+            plannedActivity.title,
+            targetValue,
+            description: 'Started from planned activity',
+          );
+
+          developer.log(
+            'Started planned activity $plannedId as new activity $newId',
+          );
+
+          return MarkdownWidget(
+            content:
+                '✅ Started planned activity "${plannedActivity.title}" as new $newType activity (ID: $newId)',
+          );
+        } catch (e) {
+          developer.log('Error starting planned activity: $e');
+          return MarkdownWidget(
+            content: '❌ Error starting planned activity: $e',
+          );
         }
 
       case 'create_custom_list':
