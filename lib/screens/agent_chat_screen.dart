@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
+import '../providers/chat_provider.dart';
 import '../providers/gemini.dart';
 import '../widgets/activity_card_widget.dart';
 import '../widgets/markdown_widget.dart';
@@ -27,22 +28,6 @@ class AgentChatScreen extends ConsumerWidget {
   }
 }
 
-class ChatMessage {
-  final String id;
-  final String text;
-  final bool isUser;
-  final DateTime timestamp;
-  final List<Widget> widgets;
-
-  ChatMessage({
-    required this.id,
-    required this.text,
-    required this.isUser,
-    required this.timestamp,
-    this.widgets = const [],
-  });
-}
-
 class ChatInterface extends ConsumerStatefulWidget {
   final ChatSession chatSession;
 
@@ -54,36 +39,54 @@ class ChatInterface extends ConsumerStatefulWidget {
 
 class _ChatInterfaceState extends ConsumerState<ChatInterface> {
   final TextEditingController _controller = TextEditingController();
-  final List<ChatMessage> _messages = [];
-  bool _isLoading = false;
+  final ScrollController _scrollController = ScrollController();
 
   // Audio recording variables
   final AudioRecorder _audioRecorder = AudioRecorder();
-  String? _recordingPath;
   bool _isRecording = false;
 
   @override
   void initState() {
     super.initState();
+    // Initialize text controller with current input from global state
+    final chatState = ref.read(chatProvider);
+    _controller.text = chatState.currentInput;
+
+    // Listen to text controller changes
+    _controller.addListener(() {
+      final currentText = _controller.text;
+      final globalText = ref.read(chatProvider).currentInput;
+      if (currentText != globalText) {
+        ref.read(chatProvider.notifier).setCurrentInput(currentText);
+      }
+    });
+
+    // Scroll to bottom after the widget is built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToBottom();
+    });
   }
 
   @override
   void dispose() {
     _audioRecorder.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final chatState = ref.watch(chatProvider);
+
     return Scaffold(
       body: Column(
         children: [
           Expanded(
-            child: _messages.isEmpty
+            child: chatState.messages.isEmpty
                 ? _buildWelcomeMessage()
-                : _buildMessagesList(),
+                : _buildMessagesList(chatState.messages),
           ),
-          if (_isLoading) _buildLoadingIndicator(),
+          if (chatState.isLoading) _buildLoadingIndicator(),
           _buildInputArea(),
         ],
       ),
@@ -215,15 +218,28 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
     );
   }
 
-  Widget _buildMessagesList() {
+  Widget _buildMessagesList(List<ChatMessage> messages) {
     return ListView.builder(
+      controller: _scrollController,
       padding: const EdgeInsets.all(16),
-      itemCount: _messages.length,
+      itemCount: messages.length,
       itemBuilder: (context, index) {
-        final message = _messages[index];
+        final message = messages[index];
         return _buildMessageBubble(message);
       },
     );
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   Widget _buildMessageBubble(ChatMessage message) {
@@ -402,6 +418,8 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
   }
 
   Widget _buildInputArea() {
+    final chatState = ref.watch(chatProvider);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -428,6 +446,9 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
               constraints: const BoxConstraints(maxHeight: 120),
               child: TextField(
                 controller: _controller,
+                onChanged: (value) {
+                  ref.read(chatProvider.notifier).setCurrentInput(value);
+                },
                 decoration: InputDecoration(
                   hintText: 'Ask Proactive anything...',
                   hintStyle: TextStyle(
@@ -492,11 +513,11 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
           ),
           const SizedBox(width: 8),
           FloatingActionButton(
-            onPressed: _isLoading ? null : _sendMessage,
+            onPressed: chatState.isLoading ? null : _sendMessage,
             backgroundColor: Theme.of(context).colorScheme.primary,
             foregroundColor: Theme.of(context).colorScheme.onPrimary,
             elevation: 2,
-            child: _isLoading
+            child: chatState.isLoading
                 ? SizedBox(
                     width: 20,
                     height: 20,
@@ -516,40 +537,45 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
 
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
-    if (text.isEmpty || _isLoading) return;
+    final chatState = ref.read(chatProvider);
+    if (text.isEmpty || chatState.isLoading) return;
 
-    setState(() {
-      _messages.add(
-        ChatMessage(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          text: text,
-          isUser: true,
-          timestamp: DateTime.now(),
-        ),
-      );
-      _isLoading = true;
-    });
+    // Add user message to global state
+    ref
+        .read(chatProvider.notifier)
+        .addMessage(
+          ChatMessage(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            text: text,
+            isUser: true,
+            timestamp: DateTime.now(),
+          ),
+        );
+    _scrollToBottom();
+
+    // Set loading state
+    ref.read(chatProvider.notifier).setLoading(true);
 
     _controller.clear();
+    ref.read(chatProvider.notifier).setCurrentInput('');
 
     try {
       final response = await widget.chatSession.sendMessage(Content.text(text));
       await _handleResponse(response);
     } catch (e) {
-      setState(() {
-        _messages.add(
-          ChatMessage(
-            id: DateTime.now().millisecondsSinceEpoch.toString(),
-            text: 'Sorry, I encountered an error: $e',
-            isUser: false,
-            timestamp: DateTime.now(),
-          ),
-        );
-      });
+      ref
+          .read(chatProvider.notifier)
+          .addMessage(
+            ChatMessage(
+              id: DateTime.now().millisecondsSinceEpoch.toString(),
+              text: 'Sorry, I encountered an error: $e',
+              isUser: false,
+              timestamp: DateTime.now(),
+            ),
+          );
+      _scrollToBottom();
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      ref.read(chatProvider.notifier).setLoading(false);
     }
   }
 
@@ -572,17 +598,18 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
     final shouldShowText =
         cleanText.isNotEmpty && (widgets.isEmpty || cleanText.length > 10);
 
-    setState(() {
-      _messages.add(
-        ChatMessage(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          text: shouldShowText ? cleanText : '',
-          isUser: false,
-          timestamp: DateTime.now(),
-          widgets: widgets,
-        ),
-      );
-    });
+    ref
+        .read(chatProvider.notifier)
+        .addMessage(
+          ChatMessage(
+            id: DateTime.now().millisecondsSinceEpoch.toString(),
+            text: shouldShowText ? cleanText : '',
+            isUser: false,
+            timestamp: DateTime.now(),
+            widgets: widgets,
+          ),
+        );
+    _scrollToBottom();
   }
 
   Future<Widget?> _executeFunctionCall(FunctionCall call) async {
@@ -667,24 +694,29 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
 
         setState(() {
           _isRecording = true;
-          _recordingPath = path;
         });
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Microphone permission is required for voice input'),
-            duration: Duration(seconds: 3),
-          ),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Microphone permission is required for voice input',
+              ),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
       }
     } catch (e) {
       print('Error starting recording: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Recording error: $e'),
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Recording error: $e'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
@@ -693,7 +725,6 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
       final path = await _audioRecorder.stop();
       setState(() {
         _isRecording = false;
-        _recordingPath = path;
       });
 
       if (path != null) {
@@ -745,23 +776,26 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
         final transcribedText = response.text?.trim() ?? '';
 
         if (transcribedText.isNotEmpty) {
-          setState(() {
-            _controller.text = transcribedText;
-          });
+          _controller.text = transcribedText;
+          ref.read(chatProvider.notifier).setCurrentInput(transcribedText);
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Audio transcribed successfully'),
-              duration: Duration(seconds: 2),
-            ),
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Audio transcribed successfully'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
         } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Could not transcribe audio'),
-              duration: Duration(seconds: 2),
-            ),
-          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Could not transcribe audio'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
         }
 
         // Clean up the temporary file
@@ -769,12 +803,14 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
       }
     } catch (e) {
       print('Error transcribing audio: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Transcription error: $e'),
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Transcription error: $e'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
