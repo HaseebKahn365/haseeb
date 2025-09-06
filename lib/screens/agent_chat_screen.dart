@@ -70,67 +70,126 @@ class _ChatInterfaceState extends State<ChatInterface> {
   }
 
   Widget _buildWelcomeMessage() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.chat_bubble_outline,
-              size: 64,
+    return Container(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          // Avatar
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  Theme.of(context).colorScheme.primary,
+                  Theme.of(context).colorScheme.secondary,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(40),
+              boxShadow: [
+                BoxShadow(
+                  color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Icon(
+              Icons.smart_toy_rounded,
+              color: Theme.of(context).colorScheme.onPrimary,
+              size: 36,
+            ),
+          ),
+          const SizedBox(height: 24),
+          // Title
+          Text(
+            'Welcome to Proactive!',
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.bold,
               color: Theme.of(context).colorScheme.primary,
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Welcome to Proactive!',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.primary,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          // Subtitle
+          Text(
+            'Your AI-powered activity assistant is ready to help you track progress, manage goals, and stay motivated.',
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+              height: 1.5,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 32),
+          // Feature cards
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: Theme.of(context).colorScheme.outline.withOpacity(0.2),
               ),
             ),
-            const SizedBox(height: 8),
-            Text(
-              'I\'m your AI activity assistant. Ask me to update activities, show progress, or export data.',
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Try asking:',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.lightbulb_outline_rounded,
+                      color: Theme.of(context).colorScheme.primary,
+                      size: 20,
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '• "Update my pushups to 50 done"',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  Text(
-                    '• "Show my running progress"',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  Text(
-                    '• "Export completed activities"',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    Text(
+                      'Try asking:',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _buildExampleQuery('Update my pushups to 50 done'),
+                _buildExampleQuery('Show my running progress'),
+                _buildExampleQuery('Export completed activities'),
+                _buildExampleQuery('Create a workout plan'),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildExampleQuery(String query) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primary,
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              query,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context).colorScheme.onSurface,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -150,36 +209,81 @@ class _ChatInterfaceState extends State<ChatInterface> {
     return Align(
       alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 4),
+        margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.8,
         ),
-        child: Card(
-          elevation: 2,
-          color: message.isUser
-              ? Theme.of(context).colorScheme.primaryContainer
-              : Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (message.text.isNotEmpty)
-                  Text(
-                    message.text,
-                    style: TextStyle(
-                      color: message.isUser
-                          ? Theme.of(context).colorScheme.onPrimaryContainer
-                          : Theme.of(context).colorScheme.onSurface,
-                    ),
-                  ),
-                if (message.widgets.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  ...message.widgets,
-                ],
-              ],
+        child: Column(
+          crossAxisAlignment: message.isUser
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
+          children: [
+            // Message sender label
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                message.isUser ? 'You' : 'Proactive',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ),
-          ),
+            // Message bubble
+            Card(
+              elevation: message.isUser ? 1 : 2,
+              color: message.isUser
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.surfaceContainerHighest,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(16),
+                  topRight: const Radius.circular(16),
+                  bottomLeft: message.isUser
+                      ? const Radius.circular(16)
+                      : const Radius.circular(4),
+                  bottomRight: message.isUser
+                      ? const Radius.circular(4)
+                      : const Radius.circular(16),
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (message.text.isNotEmpty)
+                      Text(
+                        message.text,
+                        style: TextStyle(
+                          color: message.isUser
+                              ? Theme.of(context).colorScheme.onPrimary
+                              : Theme.of(context).colorScheme.onSurface,
+                          fontSize: 16,
+                        ),
+                      ),
+                    if (message.widgets.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      ...message.widgets,
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            // Timestamp
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                _formatTimestamp(message.timestamp),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurfaceVariant.withOpacity(0.7),
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -187,25 +291,52 @@ class _ChatInterfaceState extends State<ChatInterface> {
 
   Widget _buildLoadingIndicator() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
       child: Row(
         children: [
-          SizedBox(
-            width: 20,
-            height: 20,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                Theme.of(context).colorScheme.primary,
-              ),
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Icon(
+              Icons.smart_toy_rounded,
+              color: Theme.of(context).colorScheme.onPrimaryContainer,
+              size: 16,
             ),
           ),
           const SizedBox(width: 12),
-          Text(
-            'Proactive is thinking...',
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-              fontStyle: FontStyle.italic,
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Proactive is thinking...',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -215,7 +346,7 @@ class _ChatInterfaceState extends State<ChatInterface> {
 
   Widget _buildInputArea() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         border: Border(
@@ -224,43 +355,65 @@ class _ChatInterfaceState extends State<ChatInterface> {
             width: 1,
           ),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Theme.of(context).shadowColor.withOpacity(0.1),
+            blurRadius: 4,
+            offset: const Offset(0, -2),
+          ),
+        ],
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
-            child: TextField(
-              controller: _controller,
-              decoration: InputDecoration(
-                hintText: 'Ask Proactive anything...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide(
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide(
+            child: Container(
+              constraints: const BoxConstraints(maxHeight: 120),
+              child: TextField(
+                controller: _controller,
+                decoration: InputDecoration(
+                  hintText: 'Ask Proactive anything...',
+                  hintStyle: TextStyle(
                     color: Theme.of(
                       context,
-                    ).colorScheme.outline.withOpacity(0.5),
+                    ).colorScheme.onSurfaceVariant.withOpacity(0.7),
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.outline.withOpacity(0.3),
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.outline.withOpacity(0.3),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide(
+                      color: Theme.of(context).colorScheme.primary,
+                      width: 2,
+                    ),
+                  ),
+                  filled: true,
+                  fillColor: Theme.of(
+                    context,
+                  ).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
                   ),
                 ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide(
-                    color: Theme.of(context).colorScheme.primary,
-                    width: 2,
-                  ),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 12,
-                ),
+                maxLines: null,
+                textInputAction: TextInputAction.send,
+                onSubmitted: (_) => _sendMessage(),
               ),
-              maxLines: null,
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _sendMessage(),
             ),
           ),
           const SizedBox(width: 12),
@@ -268,16 +421,19 @@ class _ChatInterfaceState extends State<ChatInterface> {
             onPressed: _isLoading ? null : _sendMessage,
             backgroundColor: Theme.of(context).colorScheme.primary,
             foregroundColor: Theme.of(context).colorScheme.onPrimary,
+            elevation: 2,
             child: _isLoading
-                ? const SizedBox(
+                ? SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Theme.of(context).colorScheme.onPrimary,
+                      ),
                     ),
                   )
-                : const Icon(Icons.send),
+                : const Icon(Icons.send_rounded, size: 20),
           ),
         ],
       ),
@@ -324,10 +480,10 @@ class _ChatInterfaceState extends State<ChatInterface> {
   }
 
   Future<void> _handleResponse(GenerateContentResponse response) async {
-    final text = response.text ?? '';
+    final rawText = response.text ?? '';
     final widgets = <Widget>[];
 
-    // Handle function calls
+    // Handle function calls from the response
     if (response.functionCalls.isNotEmpty) {
       for (final call in response.functionCalls) {
         final result = await _executeFunctionCall(call);
@@ -337,11 +493,23 @@ class _ChatInterfaceState extends State<ChatInterface> {
       }
     }
 
+    // Parse tool calls from text response if function calls are empty
+    final toolCalls = _parseToolCallsFromText(rawText);
+    for (final toolCall in toolCalls) {
+      final result = await _executeToolCallFromText(toolCall);
+      if (result != null) {
+        widgets.add(result);
+      }
+    }
+
+    // Clean the text by removing tool call syntax
+    final cleanText = _cleanTextResponse(rawText);
+
     setState(() {
       _messages.add(
         ChatMessage(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
-          text: text,
+          text: cleanText,
           isUser: false,
           timestamp: DateTime.now(),
           widgets: widgets,
@@ -381,9 +549,75 @@ class _ChatInterfaceState extends State<ChatInterface> {
     }
   }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
+  List<String> _parseToolCallsFromText(String text) {
+    final toolCalls = <String>[];
+    final regex = RegExp(r"'tool_code\s*(.*?)(?=\s*\'|$)", dotAll: true);
+    final matches = regex.allMatches(text);
+    for (final match in matches) {
+      toolCalls.add(match.group(1)?.trim() ?? '');
+    }
+    return toolCalls;
+  }
+
+  Future<Widget?> _executeToolCallFromText(String toolCall) async {
+    // Parse tool call format like: send_markdown(text='...')
+    final sendMarkdownRegex = RegExp(r"send_markdown\(text='(.*?)'\)");
+    final displayRadialRegex = RegExp(
+      r"display_radial_bar\(total=(\d+),\s*done=(\d+),\s*title='(.*?)'\)",
+    );
+    final displayCardRegex = RegExp(r"display_activity_card\([^)]+\)");
+    final doneRegex = RegExp(r"done-(\d+)");
+
+    if (sendMarkdownRegex.hasMatch(toolCall)) {
+      final match = sendMarkdownRegex.firstMatch(toolCall);
+      final text = match?.group(1) ?? '';
+      return MarkdownWidget(content: text);
+    }
+
+    if (displayRadialRegex.hasMatch(toolCall)) {
+      final match = displayRadialRegex.firstMatch(toolCall);
+      final total = int.tryParse(match?.group(1) ?? '100') ?? 100;
+      final done = int.tryParse(match?.group(2) ?? '0') ?? 0;
+      final title = match?.group(3) ?? 'Progress';
+      return RadialBarWidget(total: total, done: done, title: title);
+    }
+
+    if (displayCardRegex.hasMatch(toolCall)) {
+      // For now, return a simple markdown widget for activity cards
+      return MarkdownWidget(content: 'Activity card would be displayed here');
+    }
+
+    if (doneRegex.hasMatch(toolCall)) {
+      final match = doneRegex.firstMatch(toolCall);
+      final done = int.tryParse(match?.group(1) ?? '0') ?? 0;
+      return RadialBarWidget(total: 100, done: done, title: 'Progress');
+    }
+
+    return null;
+  }
+
+  String _cleanTextResponse(String text) {
+    // Remove tool call syntax from the text
+    final cleaned = text
+        .replaceAll(RegExp(r"'tool_code\s*.*?(?=\s*\'|$)", dotAll: true), '')
+        .trim();
+    return cleaned;
+  }
+
+  String _formatTimestamp(DateTime timestamp) {
+    final now = DateTime.now();
+    final difference = now.difference(timestamp);
+
+    if (difference.inMinutes < 1) {
+      return 'Just now';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes}m ago';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours}h ago';
+    } else if (difference.inDays == 1) {
+      return 'Yesterday ${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
+    } else {
+      return '${timestamp.month}/${timestamp.day} ${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
+    }
   }
 }
