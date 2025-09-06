@@ -4,6 +4,7 @@ import 'package:haseeb/providers/theme_provider.dart';
 import 'package:haseeb/screens/agent_chat_screen.dart';
 import 'package:haseeb/screens/home_screen.dart';
 import 'package:haseeb/screens/settings_screen.dart';
+import 'package:haseeb/screens/widget_preview_screen.dart';
 
 void main() {
   runApp(const ProviderScope(child: MainApp()));
@@ -42,27 +43,74 @@ class _MainScreenState extends State<MainScreen> {
     const HomeScreen(),
     const AgentChatScreen(),
     const SettingsScreen(),
+    const WidgetPreviewScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
+    final titles = ['Home', 'Agent Chat', 'Settings', 'Widget Preview'];
+
     return Scaffold(
+      appBar: AppBar(
+        title: Text(titles[_currentIndex]),
+        backgroundColor: Theme.of(context).primaryColor,
+        foregroundColor: Colors.white,
+      ),
       body: _screens[_currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-          BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Agent'),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-        ],
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 10,
+              offset: const Offset(0, -2),
+            ),
+          ],
+        ),
+        child: BottomNavigationBar(
+          currentIndex: _currentIndex,
+          onTap: (index) {
+            print('Navigation tapped: $index'); // Debug print
+            setState(() {
+              _currentIndex = index;
+            });
+          },
+          type: BottomNavigationBarType.fixed,
+          backgroundColor:
+              Theme.of(context).bottomNavigationBarTheme.backgroundColor ??
+              Theme.of(context).scaffoldBackgroundColor,
+          selectedItemColor:
+              Theme.of(context).bottomNavigationBarTheme.selectedItemColor ??
+              Theme.of(context).primaryColor,
+          unselectedItemColor:
+              Theme.of(context).bottomNavigationBarTheme.unselectedItemColor ??
+              Colors.grey,
+          showSelectedLabels: true,
+          showUnselectedLabels: true,
+          elevation: 8,
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home, size: 24),
+              label: 'Home',
+              tooltip: 'Home Screen',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.chat, size: 24),
+              label: 'Agent',
+              tooltip: 'AI Agent Chat',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.settings, size: 24),
+              label: 'Settings',
+              tooltip: 'App Settings',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.widgets, size: 24),
+              label: 'Widgets',
+              tooltip: 'Widget Preview',
+            ),
+          ],
+        ),
       ),
     );
   }

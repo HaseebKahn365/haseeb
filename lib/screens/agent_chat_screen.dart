@@ -11,13 +11,10 @@ class AgentChatScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final chatSessionAsync = ref.watch(chatSessionProvider);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Agent')),
-      body: chatSessionAsync.when(
-        data: (chatSession) => ChatInterface(chatSession: chatSession),
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => Center(child: Text('Error: $error')),
-      ),
+    return chatSessionAsync.when(
+      data: (chatSession) => ChatInterface(chatSession: chatSession),
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (error, stack) => Center(child: Text('Error: $error')),
     );
   }
 }
