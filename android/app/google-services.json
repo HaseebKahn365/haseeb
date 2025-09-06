@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "482257513712",
+    "project_id": "haseeb-34774",
+    "storage_bucket": "haseeb-34774.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:482257513712:android:a6bbba19c2adba36792635",
+        "android_client_info": {
+          "package_name": "com.example.haseeb"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD2irfd8UURUk3FtzlXilrpZZV971Gu7Es"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

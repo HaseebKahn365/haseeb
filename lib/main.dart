@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:haseeb/screens/home_screen.dart';
 
 void main() {
   runApp(const ProviderScope(child: MainApp()));
@@ -14,11 +15,7 @@ class MainApp extends ConsumerWidget {
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),
-      home: MainScreen(
-        sendMessage: (message) {
-          sendMessage(message, ref);
-        },
-      ),
+      home: HomeScreen(),
     );
   }
 
@@ -30,76 +27,6 @@ class MainApp extends ConsumerWidget {
     logStateNotifier.logUserText(message);
     chatStateNotifier.addLlmMessage(message, MessageState.complete);
     logStateNotifier.logLlmText(message);
-  }
-}
-
-class MainScreen extends StatelessWidget {
-  final Function(String) sendMessage;
-
-  const MainScreen({required this.sendMessage, super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Echo Chat')),
-      body: ChatInterface(sendMessage: sendMessage),
-    );
-  }
-}
-
-class ChatInterface extends StatefulWidget {
-  final Function(String) sendMessage;
-
-  const ChatInterface({required this.sendMessage, super.key});
-
-  @override
-  State<ChatInterface> createState() => _ChatInterfaceState();
-}
-
-class _ChatInterfaceState extends State<ChatInterface> {
-  final TextEditingController _controller = TextEditingController();
-  final List<String> _messages = [];
-
-  void _handleSend() {
-    final text = _controller.text;
-    if (text.isNotEmpty) {
-      setState(() {
-        _messages.add('You: $text');
-        _messages.add('Echo: $text');
-      });
-      widget.sendMessage(text);
-      _controller.clear();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Expanded(
-          child: ListView.builder(
-            itemCount: _messages.length,
-            itemBuilder: (context, index) {
-              return ListTile(title: Text(_messages[index]));
-            },
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _controller,
-                  decoration: const InputDecoration(hintText: 'Type a message'),
-                ),
-              ),
-              IconButton(icon: const Icon(Icons.send), onPressed: _handleSend),
-            ],
-          ),
-        ),
-      ],
-    );
   }
 }
 
