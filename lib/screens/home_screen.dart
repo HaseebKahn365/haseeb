@@ -51,7 +51,9 @@ class _HomeScreenState extends State<HomeScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Clear Database'),
-        content: const Text('Are you sure you want to clear all activities? This action cannot be undone.'),
+        content: const Text(
+          'Are you sure you want to clear all activities? This action cannot be undone.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
