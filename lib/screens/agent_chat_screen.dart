@@ -221,12 +221,40 @@ class _ChatInterfaceState extends State<ChatInterface> {
             // Message sender label
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
-              child: Text(
-                message.isUser ? 'You' : 'Proactive',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  fontWeight: FontWeight.w500,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (!message.isUser) ...[
+                    Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            Theme.of(context).colorScheme.primary,
+                            Theme.of(context).colorScheme.secondary,
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        Icons.smart_toy_rounded,
+                        color: Theme.of(context).colorScheme.onPrimary,
+                        size: 14,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Text(
+                    message.isUser ? 'You' : 'Proactive',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ),
             // Message bubble
@@ -260,10 +288,11 @@ class _ChatInterfaceState extends State<ChatInterface> {
                               ? Theme.of(context).colorScheme.onPrimary
                               : Theme.of(context).colorScheme.onSurface,
                           fontSize: 16,
+                          height: 1.4,
                         ),
                       ),
                     if (message.widgets.isNotEmpty) ...[
-                      const SizedBox(height: 12),
+                      if (message.text.isNotEmpty) const SizedBox(height: 12),
                       ...message.widgets,
                     ],
                   ],
@@ -298,12 +327,19 @@ class _ChatInterfaceState extends State<ChatInterface> {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primaryContainer,
+              gradient: LinearGradient(
+                colors: [
+                  Theme.of(context).colorScheme.primary,
+                  Theme.of(context).colorScheme.secondary,
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Icon(
               Icons.smart_toy_rounded,
-              color: Theme.of(context).colorScheme.onPrimaryContainer,
+              color: Theme.of(context).colorScheme.onPrimary,
               size: 16,
             ),
           ),
@@ -493,23 +529,15 @@ class _ChatInterfaceState extends State<ChatInterface> {
       }
     }
 
-    // Parse tool calls from text response if function calls are empty
-    final toolCalls = _parseToolCallsFromText(rawText);
-    for (final toolCall in toolCalls) {
-      final result = await _executeToolCallFromText(toolCall);
-      if (result != null) {
-        widgets.add(result);
-      }
-    }
-
-    // Clean the text by removing tool call syntax
+    // Only show text if there are no function calls or if text is meaningful
     final cleanText = _cleanTextResponse(rawText);
+    final shouldShowText = cleanText.isNotEmpty && (widgets.isEmpty || cleanText.length > 10);
 
     setState(() {
       _messages.add(
         ChatMessage(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
-          text: cleanText,
+          text: shouldShowText ? cleanText : '',
           isUser: false,
           timestamp: DateTime.now(),
           widgets: widgets,
@@ -549,59 +577,13 @@ class _ChatInterfaceState extends State<ChatInterface> {
     }
   }
 
-  List<String> _parseToolCallsFromText(String text) {
-    final toolCalls = <String>[];
-    final regex = RegExp(r"'tool_code\s*(.*?)(?=\s*\'|$)", dotAll: true);
-    final matches = regex.allMatches(text);
-    for (final match in matches) {
-      toolCalls.add(match.group(1)?.trim() ?? '');
-    }
-    return toolCalls;
-  }
-
-  Future<Widget?> _executeToolCallFromText(String toolCall) async {
-    // Parse tool call format like: send_markdown(text='...')
-    final sendMarkdownRegex = RegExp(r"send_markdown\(text='(.*?)'\)");
-    final displayRadialRegex = RegExp(
-      r"display_radial_bar\(total=(\d+),\s*done=(\d+),\s*title='(.*?)'\)",
-    );
-    final displayCardRegex = RegExp(r"display_activity_card\([^)]+\)");
-    final doneRegex = RegExp(r"done-(\d+)");
-
-    if (sendMarkdownRegex.hasMatch(toolCall)) {
-      final match = sendMarkdownRegex.firstMatch(toolCall);
-      final text = match?.group(1) ?? '';
-      return MarkdownWidget(content: text);
-    }
-
-    if (displayRadialRegex.hasMatch(toolCall)) {
-      final match = displayRadialRegex.firstMatch(toolCall);
-      final total = int.tryParse(match?.group(1) ?? '100') ?? 100;
-      final done = int.tryParse(match?.group(2) ?? '0') ?? 0;
-      final title = match?.group(3) ?? 'Progress';
-      return RadialBarWidget(total: total, done: done, title: title);
-    }
-
-    if (displayCardRegex.hasMatch(toolCall)) {
-      // For now, return a simple markdown widget for activity cards
-      return MarkdownWidget(content: 'Activity card would be displayed here');
-    }
-
-    if (doneRegex.hasMatch(toolCall)) {
-      final match = doneRegex.firstMatch(toolCall);
-      final done = int.tryParse(match?.group(1) ?? '0') ?? 0;
-      return RadialBarWidget(total: 100, done: done, title: 'Progress');
-    }
-
-    return null;
-  }
-
   String _cleanTextResponse(String text) {
-    // Remove tool call syntax from the text
+    // Remove any remaining function call syntax or tool call artifacts
     final cleaned = text
         .replaceAll(RegExp(r"'tool_code\s*.*?(?=\s*\'|$)", dotAll: true), '')
+        .replaceAll(RegExp(r'function_calls?:\s*\[.*?\]', dotAll: true), '')
         .trim();
-    return cleaned;
+    return cleaned.isEmpty ? '' : cleaned;
   }
 
   String _formatTimestamp(DateTime timestamp) {
