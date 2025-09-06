@@ -80,7 +80,10 @@ class SettingsScreen extends ConsumerWidget {
                       color: c,
                       borderRadius: BorderRadius.circular(8),
                       border: selected
-                          ? Border.all(color: Colors.black, width: 2)
+                          ? Border.all(
+                              color: Theme.of(context).colorScheme.outline,
+                              width: 2,
+                            )
                           : null,
                     ),
                   ),

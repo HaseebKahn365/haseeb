@@ -27,18 +27,30 @@ class RadialBarWidget extends StatelessWidget {
           children: [
             Text(title, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 16),
-            SizedBox(
-              width: 120,
-              height: 120,
+            Container(
+              constraints: const BoxConstraints(
+                minWidth: 150,
+                minHeight: 150,
+                maxWidth: 300,
+                maxHeight: 300,
+              ),
               child: Stack(
                 alignment: Alignment.center,
                 children: [
-                  CircularProgressIndicator(
-                    value: progress,
-                    strokeWidth: 12,
-                    backgroundColor: Colors.grey[300],
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      progress >= 1.0 ? Colors.green : Colors.blue,
+                  FractionallySizedBox(
+                    widthFactor: 1.0,
+                    heightFactor: 1.0,
+                    child: CircularProgressIndicator(
+                      value: progress,
+                      strokeWidth: 12,
+                      backgroundColor: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        progress >= 1.0
+                            ? Theme.of(context).colorScheme.primary
+                            : Theme.of(context).colorScheme.secondary,
+                      ),
                     ),
                   ),
                   Column(

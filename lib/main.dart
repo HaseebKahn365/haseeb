@@ -51,17 +51,13 @@ class _MainScreenState extends State<MainScreen> {
     final titles = ['Home', 'Agent Chat', 'Settings', 'Widget Preview'];
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(titles[_currentIndex]),
-        backgroundColor: Theme.of(context).primaryColor,
-        foregroundColor: Colors.white,
-      ),
+      appBar: AppBar(title: Text(titles[_currentIndex])),
       body: _screens[_currentIndex],
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
+              color: Theme.of(context).shadowColor.withOpacity(0.1),
               blurRadius: 10,
               offset: const Offset(0, -2),
             ),
@@ -76,15 +72,21 @@ class _MainScreenState extends State<MainScreen> {
             });
           },
           type: BottomNavigationBarType.fixed,
-          backgroundColor:
-              Theme.of(context).bottomNavigationBarTheme.backgroundColor ??
-              Theme.of(context).scaffoldBackgroundColor,
-          selectedItemColor:
-              Theme.of(context).bottomNavigationBarTheme.selectedItemColor ??
-              Theme.of(context).primaryColor,
-          unselectedItemColor:
-              Theme.of(context).bottomNavigationBarTheme.unselectedItemColor ??
-              Colors.grey,
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          selectedItemColor: Theme.of(context).colorScheme.primary,
+          unselectedItemColor: Theme.of(
+            context,
+          ).colorScheme.onSurface.withOpacity(0.6),
+          selectedLabelStyle: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 12,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+          unselectedLabelStyle: TextStyle(
+            fontWeight: FontWeight.w500,
+            fontSize: 12,
+            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+          ),
           showSelectedLabels: true,
           showUnselectedLabels: true,
           elevation: 8,

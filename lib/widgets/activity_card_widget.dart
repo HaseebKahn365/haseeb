@@ -45,13 +45,17 @@ class ActivityCardWidget extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: isCompleted ? Colors.green[100] : Colors.blue[100],
+                    color: isCompleted
+                        ? Theme.of(context).colorScheme.primaryContainer
+                        : Theme.of(context).colorScheme.secondaryContainer,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
                     isCompleted ? 'Completed' : 'In Progress',
                     style: TextStyle(
-                      color: isCompleted ? Colors.green[800] : Colors.blue[800],
+                      color: isCompleted
+                          ? Theme.of(context).colorScheme.onPrimaryContainer
+                          : Theme.of(context).colorScheme.onSecondaryContainer,
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                     ),
@@ -69,7 +73,7 @@ class ActivityCardWidget extends StatelessWidget {
                       Text(
                         type == 'COUNT' ? 'Repetitions' : 'Duration (min)',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.grey[600],
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -88,9 +92,13 @@ class ActivityCardWidget extends StatelessWidget {
                   child: CircularProgressIndicator(
                     value: progress,
                     strokeWidth: 6,
-                    backgroundColor: Colors.grey[300],
+                    backgroundColor: Theme.of(
+                      context,
+                    ).colorScheme.surfaceContainerHighest,
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      isCompleted ? Colors.green : Colors.blue,
+                      isCompleted
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.secondary,
                     ),
                   ),
                 ),
@@ -99,9 +107,9 @@ class ActivityCardWidget extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'Last updated: ${_formatTimestamp(timestamp)}',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: Colors.grey[500]),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),

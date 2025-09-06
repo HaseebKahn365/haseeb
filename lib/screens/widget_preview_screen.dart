@@ -13,11 +13,11 @@ class WidgetPreviewScreen extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
       children: [
-        _buildSectionHeader('Radial Bar Widget'),
+        _buildSectionHeader(context, 'Radial Bar Widget'),
         const RadialBarWidget(total: 100, done: 75, title: 'Pushups Progress'),
         const RadialBarWidget(total: 50, done: 50, title: 'Completed Task'),
 
-        _buildSectionHeader('Activity Card Widget'),
+        _buildSectionHeader(context, 'Activity Card Widget'),
         ActivityCardWidget(
           title: 'Morning Run',
           total: 60,
@@ -33,7 +33,7 @@ class WidgetPreviewScreen extends StatelessWidget {
           type: 'COUNT',
         ),
 
-        _buildSectionHeader('Markdown Widget'),
+        _buildSectionHeader(context, 'Markdown Widget'),
         const MarkdownWidget(
           content: '''
 # Welcome to Activity Tracker
@@ -54,29 +54,29 @@ This is a **markdown widget** that can display:
             ''',
         ),
 
-        _buildSectionHeader('Export Data Widget'),
+        _buildSectionHeader(context, 'Export Data Widget'),
         const ExportDataWidget(
           data:
               'id,title,timestamp,type,total,done\n1,Pushups,2025-09-06T10:00:00Z,COUNT,100,85\n2,Running,2025-09-06T08:00:00Z,DURATION,60,45',
           filename: 'activity_export.csv',
         ),
 
-        _buildSectionHeader('Interactive Examples'),
+        _buildSectionHeader(context, 'Interactive Examples'),
         _buildInteractiveSection(context),
       ],
     );
   }
 
-  Widget _buildSectionHeader(String title) {
+  Widget _buildSectionHeader(BuildContext context, String title) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      color: Colors.grey[100],
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.bold,
-          color: Colors.black87,
+          color: Theme.of(context).colorScheme.onSurface,
         ),
       ),
     );
@@ -88,9 +88,13 @@ This is a **markdown widget** that can display:
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Interactive Demo',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
           ),
           const SizedBox(height: 12),
           Wrap(

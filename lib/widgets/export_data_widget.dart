@@ -62,9 +62,9 @@ class ExportDataWidget extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'File: $filename',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: Colors.grey[600]),
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -84,9 +84,9 @@ class ExportDataWidget extends StatelessWidget {
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text('Data exported successfully!'),
-            backgroundColor: Colors.green,
+            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
           ),
         );
       }
@@ -95,7 +95,7 @@ class ExportDataWidget extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Export failed: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: Theme.of(context).colorScheme.errorContainer,
           ),
         );
       }

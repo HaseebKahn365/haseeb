@@ -18,6 +18,16 @@ class MarkdownWidget extends StatelessWidget {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           styleSheet: MarkdownStyleSheet(
+            blockquoteDecoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(8),
+              border: Border(
+                left: BorderSide(
+                  color: Theme.of(context).colorScheme.primary,
+                  width: 4,
+                ),
+              ),
+            ),
             p: Theme.of(context).textTheme.bodyMedium,
             h1: Theme.of(
               context,
@@ -31,16 +41,18 @@ class MarkdownWidget extends StatelessWidget {
             strong: const TextStyle(fontWeight: FontWeight.bold),
             em: const TextStyle(fontStyle: FontStyle.italic),
             blockquote: TextStyle(
-              color: Colors.grey[600],
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontStyle: FontStyle.italic,
             ),
             code: TextStyle(
-              backgroundColor: Colors.grey[200],
+              backgroundColor: Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest,
               fontFamily: 'monospace',
               fontSize: 14,
             ),
             codeblockDecoration: BoxDecoration(
-              color: Colors.grey[100],
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(8),
             ),
           ),
