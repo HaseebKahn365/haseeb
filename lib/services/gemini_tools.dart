@@ -43,6 +43,20 @@ class GeminiTools {
     },
   );
 
+  // Tool for creating activities
+  FunctionDeclaration get createActivityFuncDecl => FunctionDeclaration(
+    'create_activity',
+    'Creates a new activity in the database.',
+    parameters: {
+      'type': Schema.string(description: 'Activity type: COUNT or DURATION'),
+      'title': Schema.string(description: 'Activity title/name'),
+      'total_value': Schema.number(
+        description: 'Target value (count or minutes)',
+      ),
+      'description': Schema.string(description: 'Optional description'),
+    },
+  );
+
   // Tool for creating custom lists
   FunctionDeclaration get createCustomListFuncDecl => FunctionDeclaration(
     'create_custom_list',
@@ -106,6 +120,7 @@ class GeminiTools {
     Tool.functionDeclarations([
       modifyActivityFuncDecl,
       fetchActivityDataFuncDecl,
+      createActivityFuncDecl,
       createCustomListFuncDecl,
       displayRadialBarFuncDecl,
       displayActivityCardFuncDecl,
