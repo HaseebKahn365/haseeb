@@ -76,17 +76,21 @@ final themeNotifierProvider = StateNotifierProvider<ThemeNotifier, ThemeState>((
 
 final themeDataProvider = Provider<ThemeData>((ref) {
   final state = ref.watch(themeNotifierProvider);
-  return ThemeData.from(
+  return ThemeData(
     colorScheme: ColorScheme.fromSeed(seedColor: state.seedColor),
+    fontFamily: 'Roboto',
+    fontFamilyFallback: ['Arial', 'Helvetica', 'sans-serif'],
   );
 });
 
 final darkThemeDataProvider = Provider<ThemeData>((ref) {
   final state = ref.watch(themeNotifierProvider);
-  return ThemeData.from(
+  return ThemeData(
     colorScheme: ColorScheme.fromSeed(
       seedColor: state.seedColor,
       brightness: Brightness.dark,
     ),
+    fontFamily: 'Roboto',
+    fontFamilyFallback: ['Arial', 'Helvetica', 'sans-serif'],
   );
 });
