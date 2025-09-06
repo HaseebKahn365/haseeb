@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:firebase_ai/firebase_ai.dart';
@@ -10,6 +11,7 @@ import 'package:record/record.dart';
 import '../providers/chat_provider.dart';
 import '../providers/gemini.dart';
 import '../widgets/activity_card_widget.dart';
+import '../widgets/export_data_widget.dart';
 import '../widgets/markdown_widget.dart';
 import '../widgets/radial_bar_widget.dart';
 
@@ -221,7 +223,7 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
   Widget _buildMessagesList(List<ChatMessage> messages) {
     return ListView.builder(
       controller: _scrollController,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
       itemCount: messages.length,
       itemBuilder: (context, index) {
         final message = messages[index];
@@ -246,9 +248,9 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
     return Align(
       alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+        margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.8,
+          maxWidth: MediaQuery.of(context).size.width * 0.85,
         ),
         child: Column(
           crossAxisAlignment: message.isUser
@@ -313,7 +315,7 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
                 ),
               ),
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -324,8 +326,8 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
                           color: message.isUser
                               ? Theme.of(context).colorScheme.onPrimary
                               : Theme.of(context).colorScheme.onSurface,
-                          fontSize: 16,
-                          height: 1.4,
+                          fontSize: 14,
+                          height: 1.3,
                         ),
                       ),
                     if (message.widgets.isNotEmpty) ...[
@@ -357,12 +359,12 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
 
   Widget _buildLoadingIndicator() {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
       child: Row(
         children: [
           Container(
-            width: 32,
-            height: 32,
+            width: 24,
+            height: 24,
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
@@ -372,40 +374,41 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               Icons.smart_toy_rounded,
               color: Theme.of(context).colorScheme.onPrimary,
-              size: 16,
+              size: 12,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
           Expanded(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 children: [
                   SizedBox(
-                    width: 16,
-                    height: 16,
+                    width: 12,
+                    height: 12,
                     child: CircularProgressIndicator(
-                      strokeWidth: 2,
+                      strokeWidth: 1.5,
                       valueColor: AlwaysStoppedAnimation<Color>(
                         Theme.of(context).colorScheme.primary,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
                   Text(
                     'Proactive is thinking...',
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontStyle: FontStyle.italic,
+                      fontSize: 12,
                     ),
                   ),
                 ],
@@ -421,7 +424,7 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
     final chatState = ref.watch(chatProvider);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         border: Border(
@@ -484,17 +487,15 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
                     context,
                   ).colorScheme.surfaceContainerHighest.withOpacity(0.3),
                   contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 12,
+                    horizontal: 16,
+                    vertical: 8,
                   ),
                 ),
-                maxLines: null,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _sendMessage(),
+                style: TextStyle(fontSize: 14),
               ),
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 6),
           // Microphone button
           FloatingActionButton(
             onPressed: _toggleRecording,
@@ -508,19 +509,20 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
             mini: true,
             child: Icon(
               _isRecording ? Icons.stop_rounded : Icons.mic_rounded,
-              size: 20,
+              size: 16,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
           FloatingActionButton(
             onPressed: chatState.isLoading ? null : _sendMessage,
             backgroundColor: Theme.of(context).colorScheme.primary,
             foregroundColor: Theme.of(context).colorScheme.onPrimary,
             elevation: 2,
+            mini: true,
             child: chatState.isLoading
                 ? SizedBox(
-                    width: 20,
-                    height: 20,
+                    width: 16,
+                    height: 16,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
                       valueColor: AlwaysStoppedAnimation<Color>(
@@ -528,7 +530,7 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
                       ),
                     ),
                   )
-                : const Icon(Icons.send_rounded, size: 20),
+                : const Icon(Icons.send_rounded, size: 16),
           ),
         ],
       ),
@@ -539,6 +541,8 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
     final text = _controller.text.trim();
     final chatState = ref.read(chatProvider);
     if (text.isEmpty || chatState.isLoading) return;
+
+    developer.log('Sending message: "$text"');
 
     // Add user message to global state
     ref
@@ -561,6 +565,9 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
 
     try {
       final response = await widget.chatSession.sendMessage(Content.text(text));
+      developer.log(
+        'Received response with ${response.functionCalls.length} function calls',
+      );
       await _handleResponse(response);
     } catch (e) {
       ref
@@ -585,10 +592,17 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
 
     // Handle function calls from the response
     if (response.functionCalls.isNotEmpty) {
+      developer.log(
+        'Executing ${response.functionCalls.length} function call(s)',
+      );
       for (final call in response.functionCalls) {
+        developer.log('Calling function: ${call.name} with args: ${call.args}');
         final result = await _executeFunctionCall(call);
         if (result != null) {
           widgets.add(result);
+          developer.log('Function ${call.name} returned a widget');
+        } else {
+          developer.log('Function ${call.name} returned null');
         }
       }
     }
@@ -638,9 +652,69 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
         final args = call.args;
         return MarkdownWidget(content: args['text'] as String? ?? '');
 
+      case 'export_data':
+        final args = call.args;
+        final activities = args['activities'] as List<dynamic>? ?? [];
+        developer.log('Exporting ${activities.length} activities to CSV');
+        final csvData = _convertActivitiesToCSV(activities);
+        developer.log(
+          'CSV data generated, length: ${csvData.length} characters',
+        );
+        return ExportDataWidget(
+          data: csvData,
+          filename:
+              'activity_data_${DateTime.now().millisecondsSinceEpoch}.csv',
+        );
+
       default:
         return null;
     }
+  }
+
+  String _convertActivitiesToCSV(List<dynamic> activities) {
+    if (activities.isEmpty) {
+      return 'No activities to export';
+    }
+
+    // CSV header
+    final headers = [
+      'Title',
+      'Type',
+      'Total',
+      'Done',
+      'Progress %',
+      'Timestamp',
+      'Status',
+    ];
+    final csvRows = [headers.join(',')];
+
+    // Convert each activity to CSV row
+    for (final activity in activities) {
+      if (activity is Map<String, dynamic>) {
+        final title = activity['title'] ?? '';
+        final type = activity['type'] ?? 'COUNT';
+        final total = activity['total'] ?? 0;
+        final done = activity['done'] ?? 0;
+        final progress = total > 0 ? ((done / total) * 100).round() : 0;
+        final timestamp =
+            activity['timestamp'] ?? DateTime.now().toIso8601String();
+        final status = progress >= 100 ? 'Completed' : 'In Progress';
+
+        final row = [
+          '"${title.replaceAll('"', '""')}"', // Escape quotes in CSV
+          type,
+          total.toString(),
+          done.toString(),
+          '$progress%',
+          timestamp,
+          status,
+        ];
+
+        csvRows.add(row.join(','));
+      }
+    }
+
+    return csvRows.join('\n');
   }
 
   String _cleanTextResponse(String text) {
@@ -670,6 +744,7 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
   }
 
   Future<void> _startRecording() async {
+    developer.log('Starting audio recording');
     try {
       // Request microphone permission
       if (await _audioRecorder.hasPermission()) {
@@ -708,7 +783,7 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
         }
       }
     } catch (e) {
-      print('Error starting recording: $e');
+      developer.log('Error starting recording', error: e);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -721,6 +796,7 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
   }
 
   Future<void> _stopRecording() async {
+    developer.log('Stopping audio recording');
     try {
       final path = await _audioRecorder.stop();
       setState(() {
@@ -731,7 +807,7 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
         await _transcribeAudio(path);
       }
     } catch (e) {
-      print('Error stopping recording: $e');
+      developer.log('Error stopping recording', error: e);
       setState(() {
         _isRecording = false;
       });
@@ -739,6 +815,7 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
   }
 
   Future<void> _transcribeAudio(String audioPath) async {
+    developer.log('Starting audio transcription for file: $audioPath');
     try {
       // Read the audio file
       final audioFile = kIsWeb
@@ -776,6 +853,7 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
         final transcribedText = response.text?.trim() ?? '';
 
         if (transcribedText.isNotEmpty) {
+          developer.log('Audio transcription successful: "$transcribedText"');
           _controller.text = transcribedText;
           ref.read(chatProvider.notifier).setCurrentInput(transcribedText);
 
@@ -788,6 +866,7 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
             );
           }
         } else {
+          developer.log('Audio transcription failed - empty response');
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -802,7 +881,7 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
         await audioFile.delete();
       }
     } catch (e) {
-      print('Error transcribing audio: $e');
+      developer.log('Error transcribing audio', error: e);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -815,6 +894,9 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
   }
 
   void _toggleRecording() {
+    developer.log(
+      'Toggle recording called, current state: ${_isRecording ? "recording" : "not recording"}',
+    );
     if (_isRecording) {
       _stopRecording();
     } else {

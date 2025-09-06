@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:haseeb/providers/theme_provider.dart';
@@ -66,7 +68,7 @@ class _MainScreenState extends State<MainScreen> {
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (index) {
-            print('Navigation tapped: $index'); // Debug print
+            developer.log('Navigation tapped: $index');
             setState(() {
               _currentIndex = index;
             });
