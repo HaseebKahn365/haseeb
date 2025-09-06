@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:haseeb/models/count_activity.dart';
+import 'package:haseeb/models/duration_activity.dart';
+import 'package:haseeb/services/activity_service.dart';
 import 'package:haseeb/widgets/activity_card_widget.dart';
 import 'package:haseeb/widgets/radial_bar_widget.dart';
 
@@ -12,8 +15,93 @@ below will be a list of activities for today with their progress bars. for showi
 Below this list will be another list of completed activities for today.
  */
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  late ActivityService _activityService;
+  List<CountActivity> _ongoingCountActivities = [];
+  List<DurationActivity> _ongoingDurationActivities = [];
+  List<CountActivity> _completedCountActivities = [];
+  List<DurationActivity> _completedDurationActivities = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _initService();
+  }
+
+  Future<void> _initService() async {
+    _activityService = ActivityService();
+    await _activityService.init();
+    await _loadSampleData();
+    await _loadActivities();
+  }
+
+  Future<void> _loadSampleData() async {
+    // Add sample data if not exists
+    if (_activityService.getAllActivities().isEmpty) {
+      final pushups = CountActivity(
+        id: 'pushups',
+        title: 'Pushups',
+        timestamp: DateTime.now(),
+        totalCount: 100,
+        doneCount: 75,
+      );
+      final running = DurationActivity(
+        id: 'running',
+        title: 'Running',
+        timestamp: DateTime.now(),
+        totalDuration: 120,
+        doneDuration: 120,
+      );
+      final yoga = DurationActivity(
+        id: 'yoga',
+        title: 'Yoga',
+        timestamp: DateTime.now(),
+        totalDuration: 60,
+        doneDuration: 60,
+      );
+      final meditation = DurationActivity(
+        id: 'meditation',
+        title: 'Meditation',
+        timestamp: DateTime.now(),
+        totalDuration: 30,
+        doneDuration: 30,
+      );
+
+      await _activityService.addActivity(pushups);
+      await _activityService.addActivity(running);
+      await _activityService.addActivity(yoga);
+      await _activityService.addActivity(meditation);
+    }
+  }
+
+  Future<void> _loadActivities() async {
+    final activities = _activityService.getAllActivities();
+    setState(() {
+      _ongoingCountActivities = activities
+          .whereType<CountActivity>()
+          .where((a) => a.doneCount < a.totalCount)
+          .toList();
+      _ongoingDurationActivities = activities
+          .whereType<DurationActivity>()
+          .where((a) => a.doneDuration < a.totalDuration)
+          .toList();
+      _completedCountActivities = activities
+          .whereType<CountActivity>()
+          .where((a) => a.doneCount >= a.totalCount)
+          .toList();
+      _completedDurationActivities = activities
+          .whereType<DurationActivity>()
+          .where((a) => a.doneDuration >= a.totalDuration)
+          .toList();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -24,10 +112,6 @@ class HomeScreen extends StatelessWidget {
           child: Column(
             children: [
               // Radial bar widget for today's progress
-              //           class RadialBarWidget extends StatelessWidget {
-              // final int total;
-              // final int done;
-              // final String title;
               RadialBarWidget(
                 total: 1440,
                 done: 800,
@@ -46,22 +130,25 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-              ...[
-                ActivityCardWidget(
-                  title: 'Pushups',
-                  total: 100,
-                  done: 75,
-                  timestamp: DateTime.now(),
+              ..._ongoingCountActivities.map(
+                (activity) => ActivityCardWidget(
+                  title: activity.title,
+                  total: activity.totalCount,
+                  done: activity.doneCount,
+                  timestamp: activity.timestamp,
                   type: 'COUNT',
                 ),
-                ActivityCardWidget(
-                  title: 'Running',
-                  total: 120,
-                  done: 120,
-                  timestamp: DateTime.now(),
+              ),
+              ..._ongoingDurationActivities.map(
+                (activity) => ActivityCardWidget(
+                  title: activity.title,
+                  total: activity.totalDuration,
+                  done: activity.doneDuration,
+                  timestamp: activity.timestamp,
                   type: 'DURATION',
                 ),
-              ],
+              ),
+
               // ListView of completed activities
               const SizedBox(height: 16),
               Align(
@@ -76,19 +163,23 @@ class HomeScreen extends StatelessWidget {
 
               Column(
                 children: [
-                  ActivityCardWidget(
-                    title: 'Yoga',
-                    total: 60,
-                    done: 60,
-                    timestamp: DateTime.now(),
-                    type: 'DURATION',
+                  ..._completedCountActivities.map(
+                    (activity) => ActivityCardWidget(
+                      title: activity.title,
+                      total: activity.totalCount,
+                      done: activity.doneCount,
+                      timestamp: activity.timestamp,
+                      type: 'COUNT',
+                    ),
                   ),
-                  ActivityCardWidget(
-                    title: 'Meditation',
-                    total: 30,
-                    done: 30,
-                    timestamp: DateTime.now(),
-                    type: 'DURATION',
+                  ..._completedDurationActivities.map(
+                    (activity) => ActivityCardWidget(
+                      title: activity.title,
+                      total: activity.totalDuration,
+                      done: activity.doneDuration,
+                      timestamp: activity.timestamp,
+                      type: 'DURATION',
+                    ),
                   ),
                 ],
               ),

@@ -2,13 +2,26 @@ import 'dart:developer' as developer;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:haseeb/models/activity.dart';
+import 'package:haseeb/models/count_activity.dart';
+import 'package:haseeb/models/custom_list.dart';
+import 'package:haseeb/models/duration_activity.dart';
+import 'package:haseeb/models/planned_activity.dart';
 import 'package:haseeb/providers/theme_provider.dart';
 import 'package:haseeb/screens/agent_chat_screen.dart';
 import 'package:haseeb/screens/home_screen.dart';
 import 'package:haseeb/screens/settings_screen.dart';
 import 'package:haseeb/screens/widget_preview_screen.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Hive.initFlutter();
+  Hive.registerAdapter(ActivityAdapter());
+  Hive.registerAdapter(CountActivityAdapter());
+  Hive.registerAdapter(DurationActivityAdapter());
+  Hive.registerAdapter(PlannedActivityAdapter());
+  Hive.registerAdapter(CustomListAdapter());
   runApp(const ProviderScope(child: MainApp()));
 }
 
