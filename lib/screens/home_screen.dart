@@ -73,6 +73,25 @@ class HomeScreen extends StatelessWidget {
                   ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                 ),
               ),
+
+              Column(
+                children: [
+                  ActivityCardWidget(
+                    title: 'Yoga',
+                    total: 60,
+                    done: 60,
+                    timestamp: DateTime.now(),
+                    type: 'DURATION',
+                  ),
+                  ActivityCardWidget(
+                    title: 'Meditation',
+                    total: 30,
+                    done: 30,
+                    timestamp: DateTime.now(),
+                    type: 'DURATION',
+                  ),
+                ],
+              ),
             ],
           ),
         ),
