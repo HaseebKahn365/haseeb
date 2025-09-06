@@ -1,6 +1,11 @@
+import 'dart:io';
+
 import 'package:firebase_ai/firebase_ai.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 
 import '../providers/gemini.dart';
 import '../widgets/activity_card_widget.dart';
@@ -38,19 +43,35 @@ class ChatMessage {
   });
 }
 
-class ChatInterface extends StatefulWidget {
+class ChatInterface extends ConsumerStatefulWidget {
   final ChatSession chatSession;
 
   const ChatInterface({required this.chatSession, super.key});
 
   @override
-  State<ChatInterface> createState() => _ChatInterfaceState();
+  ConsumerState<ChatInterface> createState() => _ChatInterfaceState();
 }
 
-class _ChatInterfaceState extends State<ChatInterface> {
+class _ChatInterfaceState extends ConsumerState<ChatInterface> {
   final TextEditingController _controller = TextEditingController();
   final List<ChatMessage> _messages = [];
   bool _isLoading = false;
+
+  // Audio recording variables
+  final AudioRecorder _audioRecorder = AudioRecorder();
+  String? _recordingPath;
+  bool _isRecording = false;
+
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
+  void dispose() {
+    _audioRecorder.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -453,6 +474,23 @@ class _ChatInterfaceState extends State<ChatInterface> {
             ),
           ),
           const SizedBox(width: 12),
+          // Microphone button
+          FloatingActionButton(
+            onPressed: _toggleRecording,
+            backgroundColor: _isRecording
+                ? Theme.of(context).colorScheme.error
+                : Theme.of(context).colorScheme.secondary,
+            foregroundColor: _isRecording
+                ? Theme.of(context).colorScheme.onError
+                : Theme.of(context).colorScheme.onSecondary,
+            elevation: 2,
+            mini: true,
+            child: Icon(
+              _isRecording ? Icons.stop_rounded : Icons.mic_rounded,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 8),
           FloatingActionButton(
             onPressed: _isLoading ? null : _sendMessage,
             backgroundColor: Theme.of(context).colorScheme.primary,
@@ -531,7 +569,8 @@ class _ChatInterfaceState extends State<ChatInterface> {
 
     // Only show text if there are no function calls or if text is meaningful
     final cleanText = _cleanTextResponse(rawText);
-    final shouldShowText = cleanText.isNotEmpty && (widgets.isEmpty || cleanText.length > 10);
+    final shouldShowText =
+        cleanText.isNotEmpty && (widgets.isEmpty || cleanText.length > 10);
 
     setState(() {
       _messages.add(
@@ -600,6 +639,150 @@ class _ChatInterfaceState extends State<ChatInterface> {
       return 'Yesterday ${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
     } else {
       return '${timestamp.month}/${timestamp.day} ${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
+    }
+  }
+
+  Future<void> _startRecording() async {
+    try {
+      // Request microphone permission
+      if (await _audioRecorder.hasPermission()) {
+        // Get temporary directory for recording
+        final directory = kIsWeb
+            ? null // Web handles this differently
+            : await getTemporaryDirectory();
+
+        final path = kIsWeb
+            ? 'recording.webm'
+            : '${directory!.path}/recording.m4a';
+
+        // Start recording
+        await _audioRecorder.start(
+          const RecordConfig(
+            encoder: AudioEncoder.aacLc,
+            numChannels: 1,
+            sampleRate: 16000,
+          ),
+          path: path,
+        );
+
+        setState(() {
+          _isRecording = true;
+          _recordingPath = path;
+        });
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Microphone permission is required for voice input'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error starting recording: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Recording error: $e'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  Future<void> _stopRecording() async {
+    try {
+      final path = await _audioRecorder.stop();
+      setState(() {
+        _isRecording = false;
+        _recordingPath = path;
+      });
+
+      if (path != null) {
+        await _transcribeAudio(path);
+      }
+    } catch (e) {
+      print('Error stopping recording: $e');
+      setState(() {
+        _isRecording = false;
+      });
+    }
+  }
+
+  Future<void> _transcribeAudio(String audioPath) async {
+    try {
+      // Read the audio file
+      final audioFile = kIsWeb
+          ? null // Web handles this differently
+          : File(audioPath);
+
+      if (kIsWeb) {
+        // For web, we'll show a message for now
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Web audio transcription coming soon. Please use mobile for now.',
+            ),
+            duration: Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
+
+      if (audioFile != null && await audioFile.exists()) {
+        final audioBytes = await audioFile.readAsBytes();
+
+        // Create content with audio for Firebase AI
+        final content = Content.multi([
+          InlineDataPart('audio/m4a', audioBytes),
+          TextPart(
+            'Please transcribe this audio to text. Return only the transcribed text without any additional commentary.',
+          ),
+        ]);
+
+        // Get the model from the provider
+        final model = await ref.read(geminiModelProvider.future);
+
+        final response = await model.generateContent([content]);
+        final transcribedText = response.text?.trim() ?? '';
+
+        if (transcribedText.isNotEmpty) {
+          setState(() {
+            _controller.text = transcribedText;
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Audio transcribed successfully'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not transcribe audio'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+
+        // Clean up the temporary file
+        await audioFile.delete();
+      }
+    } catch (e) {
+      print('Error transcribing audio: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Transcription error: $e'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
+  void _toggleRecording() {
+    if (_isRecording) {
+      _stopRecording();
+    } else {
+      _startRecording();
     }
   }
 }

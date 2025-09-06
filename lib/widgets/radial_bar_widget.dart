@@ -19,7 +19,7 @@ class RadialBarWidget extends StatelessWidget {
 
     return Card(
       elevation: 4,
-      margin: const EdgeInsets.all(16),
+      // margin: const EdgeInsets.all(16),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -28,12 +28,7 @@ class RadialBarWidget extends StatelessWidget {
             Text(title, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 16),
             Container(
-              constraints: const BoxConstraints(
-                minWidth: 150,
-                minHeight: 150,
-                maxWidth: 300,
-                maxHeight: 300,
-              ),
+              constraints: const BoxConstraints(maxWidth: 200, maxHeight: 200),
               child: Stack(
                 alignment: Alignment.center,
                 children: [
