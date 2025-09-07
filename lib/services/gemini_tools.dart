@@ -197,6 +197,27 @@ class GeminiTools {
     },
   );
 
+  // Tool for deleting activities
+  FunctionDeclaration get deleteActivityFuncDecl => FunctionDeclaration(
+    'delete_activity',
+    'Permanently removes an activity from all collections (planned, active, completed).',
+    parameters: {
+      'id': Schema.string(description: 'ID of the activity to delete'),
+    },
+  );
+
+  // Tool for smart suggestions
+  FunctionDeclaration get suggestActivityFuncDecl => FunctionDeclaration(
+    'suggest_activity',
+    'Intelligently suggests a planned activity to start today and converts it to active.',
+    parameters: {
+      'criteria': Schema.string(
+        description:
+            'Optional criteria for suggestion (e.g., "quick workout", "study session")',
+      ),
+    },
+  );
+
   List<Tool> get tools => [
     Tool.functionDeclarations([
       getAllActivitiesFuncDecl,
@@ -209,6 +230,8 @@ class GeminiTools {
       fetchActivityDataFuncDecl,
       createActivityFuncDecl,
       startPlannedActivityFuncDecl,
+      deleteActivityFuncDecl,
+      suggestActivityFuncDecl,
       createCustomListFuncDecl,
       displayRadialBarFuncDecl,
       displayActivityCardFuncDecl,

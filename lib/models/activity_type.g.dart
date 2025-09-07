@@ -8,7 +8,7 @@ part of 'activity_type.dart';
 
 class ActivityTypeAdapter extends TypeAdapter<ActivityType> {
   @override
-  final int typeId = 4;
+  final int typeId = 5;
 
   @override
   ActivityType read(BinaryReader reader) {

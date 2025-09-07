@@ -142,30 +142,16 @@ class _HomeScreenState extends State<HomeScreen> {
           .toList();
 
       // Calculate total tracked minutes for radial bar
+      // Only include duration activities for time tracking
       _totalTrackedMinutes = 0;
       for (final activity in todayActivities) {
         if (activity is DurationActivity) {
+          // Include all progress (done duration) regardless of completion status
           _totalTrackedMinutes += activity.doneDuration;
-        } else if (activity is CountActivity) {
-          // Estimate time based on count (this could be improved with actual time tracking)
-          _totalTrackedMinutes +=
-              (activity.doneCount * 2); // 2 minutes per rep as estimate
         }
+        // Note: Count activities are not included in time tracking
       }
     });
-  }
-
-  Future<void> _addSampleActivity() async {
-    final newActivity = CountActivity(
-      id: 'sample_${DateTime.now().millisecondsSinceEpoch}',
-      title: 'New Activity',
-      timestamp: DateTime.now(),
-      totalCount: 50,
-      doneCount: 0,
-    );
-
-    await _activityService.addActivity(newActivity);
-    await _refreshData();
   }
 
   @override
@@ -282,11 +268,6 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addSampleActivity,
-        tooltip: 'Add Sample Activity',
-        child: const Icon(Icons.add),
       ),
     );
   }

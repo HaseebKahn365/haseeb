@@ -83,21 +83,21 @@ class ExportDataWidget extends StatelessWidget {
       );
 
       if (context.mounted) {
-        // ScaffoldMessenger.of(context).showSnackBar(
-        //   SnackBar(
-        //     content: Text('Data exported successfully!'),
-        //     backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-        //   ),
-        // );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Data exported successfully!'),
+            backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+          ),
+        );
       }
     } catch (e) {
       if (context.mounted) {
-        // ScaffoldMessenger.of(context).showSnackBar(
-        //   SnackBar(
-        //     content: Text('Export failed: $e'),
-        //     backgroundColor: Theme.of(context).colorScheme.errorContainer,
-        //   ),
-        // );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Export failed: $e'),
+            backgroundColor: Theme.of(context).colorScheme.errorContainer,
+          ),
+        );
       }
     }
   }

@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 
 import '../models/activity.dart';
+import '../models/activity_type.dart';
 import '../models/count_activity.dart';
 import '../models/custom_list.dart';
 import '../models/duration_activity.dart';
@@ -120,7 +121,8 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
   // Get all activities formatted for agent tools (no caching)
   List<Map<String, dynamic>> _getAllActivitiesForAgent() {
     final all = _activityService.getAllActivities();
-    return all
+    developer.log('Found ${all.length} activities in database');
+    final formatted = all
         .map(
           (a) => {
             'title': a.title,
@@ -148,6 +150,8 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
           },
         )
         .toList();
+    developer.log('Formatted ${formatted.length} activities for agent');
+    return formatted;
   }
 
   // Find best activity match using direct database approach
@@ -687,12 +691,18 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
       );
       await _handleResponse(response);
     } catch (e) {
+      developer.log('Error in AI response: $e');
+      // Handle Firebase AI SDK specific errors
+      String errorMessage = 'Sorry, I encountered an error: $e';
+      if (e.toString().contains('FinishReason')) {
+        errorMessage = 'Sorry, there was an issue with the AI response. Please try again.';
+      }
       ref
           .read(chatProvider.notifier)
           .addMessage(
             ChatMessage(
               id: DateTime.now().millisecondsSinceEpoch.toString(),
-              text: 'Sorry, I encountered an error: $e',
+              text: errorMessage,
               isUser: false,
               timestamp: DateTime.now(),
             ),
@@ -707,21 +717,31 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
     final rawText = response.text ?? '';
     final widgets = <Widget>[];
 
-    // Handle function calls from the response
-    if (response.functionCalls.isNotEmpty) {
-      developer.log(
-        'Executing ${response.functionCalls.length} function call(s)',
-      );
-      for (final call in response.functionCalls) {
-        developer.log('Calling function: ${call.name} with args: ${call.args}');
-        final result = await _executeFunctionCall(call);
-        if (result != null) {
-          widgets.add(result);
-          developer.log('Function ${call.name} returned a widget');
-        } else {
-          developer.log('Function ${call.name} returned null');
+    try {
+      // Handle function calls from the response
+      if (response.functionCalls.isNotEmpty) {
+        developer.log(
+          'Executing ${response.functionCalls.length} function call(s)',
+        );
+        for (final call in response.functionCalls) {
+          try {
+            developer.log('Calling function: ${call.name} with args: ${call.args}');
+            final result = await _executeFunctionCall(call);
+            if (result != null) {
+              widgets.add(result);
+              developer.log('Function ${call.name} returned a widget');
+            } else {
+              developer.log('Function ${call.name} returned null');
+            }
+          } catch (e) {
+            developer.log('Error executing function ${call.name}: $e');
+            widgets.add(MarkdownWidget(content: '❌ Error executing ${call.name}: $e'));
+          }
         }
       }
+    } catch (e) {
+      developer.log('Error handling function calls: $e');
+      widgets.add(MarkdownWidget(content: '❌ Error processing response: $e'));
     }
 
     // Only show text if there are no function calls or if text is meaningful
@@ -940,171 +960,44 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
     }
   }
 
-  // Intelligent parsing of natural language updates
+  // Intelligent parsing of natural language updates - TOOL-ORIENTED APPROACH
   Future<Widget?> _parseAndUpdateActivity(String description) async {
-    final normalizedDesc = description.toLowerCase();
+    // This method should NO LONGER contain hard-coded logic
+    // Instead, it should delegate to the agent's tool calling system
 
-    // Check for completion keywords
-    final completionKeywords = [
-      'finished',
-      'completed',
-      'done all',
-      'accomplished',
-      'achieved',
-      'complete',
-      'finish',
-    ];
-    final hasCompletionKeyword = completionKeywords.any(
-      (keyword) => normalizedDesc.contains(keyword),
-    );
+    // Special handling for "move to active" requests
+    if (description.toLowerCase().contains('move') &&
+        description.toLowerCase().contains('active')) {
+      // Extract planned activity identifier from the description
+      final match = RegExp(r'planned_(\d+)').firstMatch(description);
+      if (match != null) {
+        final plannedId = match.group(0)!;
 
-    // Check for incremental keywords (add more, additional progress)
-    final incrementalKeywords = ['more', 'additional', 'extra', 'further'];
-    final isIncremental = incrementalKeywords.any(
-      (keyword) => normalizedDesc.contains(keyword),
-    );
-
-    // Look for duration patterns
-    final durationMatch = RegExp(
-      r'(\d{1,4})\s*(minute|minutes|hour|hours|min|mins|hr|hrs)',
-    ).firstMatch(normalizedDesc);
-
-    // Look for count patterns
-    final countMatch = RegExp(r'(\d{1,6})').firstMatch(normalizedDesc);
-
-    // Extract potential activity keywords from the description
-    final words = normalizedDesc.split(RegExp(r'\s+'));
-    final potentialKeywords = words.where((word) => word.length > 2).toList();
-
-    // Find the best matching activity
-    Map<String, dynamic>? bestMatch;
-    for (final keyword in potentialKeywords) {
-      final matches = _findActivitiesByKeyword(keyword);
-      if (matches.isNotEmpty) {
-        bestMatch = matches.first;
-        break;
-      }
-    }
-
-    if (bestMatch == null) {
-      return MarkdownWidget(
-        content:
-            '❌ Could not find a matching activity. Available activities:\n\n${_getAllActivityNames()}',
-      );
-    }
-
-    // Handle completion keywords - mark activity as fully completed
-    if (hasCompletionKeyword) {
-      final type = bestMatch['type'] as String?;
-      if (type == 'duration') {
-        final totalDuration = bestMatch['total_duration'] as int? ?? 0;
-        await _updateActivityAndNotify(
-          bestMatch,
-          'done_duration',
-          totalDuration,
-          '🎉 Marked "${bestMatch['title']}" as completed! ($totalDuration/$totalDuration minutes)',
+        // Delegate to the chat system to handle this via tools
+        final response = await widget.chatSession.sendMessage(
+          Content.text(
+            'Start planned activity with ID $plannedId as a duration activity with 120 minutes target',
+          ),
         );
-        return null;
-      } else if (type == 'count') {
-        final totalCount = bestMatch['total_count'] as int? ?? 0;
-        await _updateActivityAndNotify(
-          bestMatch,
-          'done_count',
-          totalCount,
-          '🎉 Marked "${bestMatch['title']}" as completed! ($totalCount/$totalCount done)',
-        );
-        return null;
-      }
-    }
 
-    // Determine what to update based on activity type and description patterns
-    if (durationMatch != null && bestMatch['type'] == 'duration') {
-      final value = int.parse(durationMatch.group(1)!);
-      final unit = durationMatch.group(2)!.toLowerCase();
+        if (response.functionCalls.isNotEmpty) {
+          final widgets = <Widget>[];
+          for (final call in response.functionCalls) {
+            final result = await _executeFunctionCall(call);
+            if (result != null) {
+              widgets.add(result);
+            }
+          }
 
-      int minutes = value;
-      if (unit.startsWith('hour') || unit.startsWith('hr')) {
-        minutes = value * 60;
-      }
-
-      // Handle incremental updates
-      if (isIncremental) {
-        final currentDone = bestMatch['done_duration'] as int? ?? 0;
-        minutes = currentDone + minutes;
-      }
-
-      // Check for completion
-      final totalDuration = bestMatch['total_duration'] as int? ?? 0;
-      String message;
-      if (minutes >= totalDuration && totalDuration > 0) {
-        message =
-            '🎉 Congratulations! You completed "${bestMatch['title']}"! ($minutes/$totalDuration minutes)';
-      } else if (isIncremental) {
-        final addedAmount = value;
-        final unit = durationMatch.group(2)!.toLowerCase();
-        if (unit.startsWith('hour') || unit.startsWith('hr')) {
-          message =
-              '✅ Added $value ${unit.startsWith('hour') ? 'hours' : 'hrs'} to "${bestMatch['title']}" - Total: $minutes minutes done.';
-        } else {
-          message =
-              '✅ Added $addedAmount minutes to "${bestMatch['title']}" - Total: $minutes minutes done.';
+          if (widgets.isNotEmpty) {
+            return widgets.first;
+          }
         }
-      } else {
-        message = '✅ Updated "${bestMatch['title']}" to $minutes minutes done.';
       }
-
-      await _updateActivityAndNotify(
-        bestMatch,
-        'done_duration',
-        minutes,
-        message,
-      );
-
-      return null; // Notification handled by _updateActivityAndNotify
-    } else if (countMatch != null && bestMatch['type'] == 'count') {
-      final value = int.parse(countMatch.group(1)!);
-
-      // Handle incremental updates
-      int finalCount = value;
-      if (isIncremental) {
-        final currentDone = bestMatch['done_count'] as int? ?? 0;
-        finalCount = currentDone + value;
-      }
-
-      // Check for completion
-      final totalCount = bestMatch['total_count'] as int? ?? 0;
-      String message;
-      if (finalCount >= totalCount && totalCount > 0) {
-        message =
-            '🎉 Congratulations! You completed "${bestMatch['title']}"! ($finalCount/$totalCount done)';
-      } else if (isIncremental) {
-        message =
-            '✅ Added $value to "${bestMatch['title']}" - Total: $finalCount done.';
-      } else {
-        message = '✅ Updated "${bestMatch['title']}" to $finalCount done.';
-      }
-
-      await _updateActivityAndNotify(
-        bestMatch,
-        'done_count',
-        finalCount,
-        message,
-      );
-
-      return null; // Notification handled by _updateActivityAndNotify
     }
 
-    return MarkdownWidget(
-      content:
-          '❌ Could not determine what to update. Please specify a number with units (e.g., "60 minutes") or a count.',
-    );
-  }
-
-  String _getAllActivityNames() {
-    final allActivities = _getAllActivitiesForAgent();
-    return allActivities
-        .map((a) => '• ${a['title']} (${a['type']?.toString().toUpperCase()})')
-        .join('\n');
+    // Return null to indicate no processing was done
+    return null;
   }
 
   Future<Widget?> _executeFunctionCall(FunctionCall call) async {
@@ -1315,17 +1208,71 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
 
       case 'export_data':
         final args = call.args;
-        final activities = args['activities'] as List<dynamic>? ?? [];
-        developer.log('Exporting ${activities.length} activities to CSV');
-        final csvData = _convertActivitiesToCSV(activities);
-        developer.log(
-          'CSV data generated, length: ${csvData.length} characters',
-        );
-        return ExportDataWidget(
-          data: csvData,
-          filename:
-              'activity_data_${DateTime.now().millisecondsSinceEpoch}.csv',
-        );
+        final requestedIds = args['activities'] as List<dynamic>? ?? [];
+
+        developer.log('Export data called with args: $args');
+        developer.log('Requested IDs: $requestedIds');
+
+        try {
+          List<Map<String, dynamic>> activitiesToExport;
+          String exportDescription;
+
+          if (requestedIds.isEmpty) {
+            // Export all activities if no specific IDs provided
+            activitiesToExport = _getAllActivitiesForAgent();
+            exportDescription = 'all activities';
+            developer.log('Exporting all activities: ${activitiesToExport.length} found');
+          } else {
+            // Export specific activities by ID
+            activitiesToExport = [];
+            for (final id in requestedIds) {
+              final activity = _activityService.getActivity(id as String);
+              if (activity != null) {
+                final activityData = _getAllActivitiesForAgent().firstWhere(
+                  (a) => a['id'] == id,
+                  orElse: () => {},
+                );
+                if (activityData.isNotEmpty) {
+                  activitiesToExport.add(activityData);
+                }
+              } else {
+                developer.log('Activity with ID $id not found');
+              }
+            }
+            exportDescription = 'selected activities';
+            developer.log('Exporting specific activities: ${activitiesToExport.length} found');
+          }
+
+          if (activitiesToExport.isEmpty) {
+            developer.log('No activities to export');
+            return MarkdownWidget(
+              content:
+                  '📄 No activities found to export. Please create some activities first!',
+            );
+          }
+
+          developer.log(
+            'Exporting ${activitiesToExport.length} activities to CSV',
+          );
+          final csvData = _convertActivitiesToCSV(activitiesToExport);
+          developer.log(
+            'CSV data generated, length: ${csvData.length} characters',
+          );
+
+          _addToTaskMemory('export_data', {
+            'exported_count': activitiesToExport.length,
+            'description': exportDescription,
+          });
+
+          return ExportDataWidget(
+            data: csvData,
+            filename:
+                'activities_export_${DateTime.now().millisecondsSinceEpoch}.csv',
+          );
+        } catch (e) {
+          developer.log('Error exporting data: $e');
+          return MarkdownWidget(content: '❌ Error exporting data: $e');
+        }
 
       case 'modify_activity':
         final args = call.args;
@@ -1563,24 +1510,48 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
             );
           }
 
-          // For now, just create a new activity based on the planned one
-          // In a full implementation, you might want to move the planned activity
-          final newType =
-              'DURATION'; // Could be determined from planned activity type
+          if (plannedActivity is! PlannedActivity) {
+            return MarkdownWidget(
+              content:
+                  '❌ Activity with ID "$plannedId" is not a planned activity.',
+            );
+          }
+
+          // Create a new activity based on the planned one
+          final plannedType = plannedActivity.type;
+          String newType;
+
+          if (plannedType == ActivityType.COUNT) {
+            newType = 'COUNT';
+          } else if (plannedType == ActivityType.DURATION) {
+            newType = 'DURATION';
+          } else {
+            newType = 'DURATION'; // Default fallback
+          }
+
           final newId = await _activityService.createNewActivity(
             newType,
             plannedActivity.title,
             targetValue,
-            description: 'Started from planned activity',
+            description: plannedActivity.description,
           );
+
+          // Delete the planned activity after starting it
+          await _activityService.deleteActivity(plannedId);
 
           developer.log(
             'Started planned activity $plannedId as new activity $newId',
           );
 
+          _addToTaskMemory('start_planned_activity', {
+            'planned_id': plannedId,
+            'new_id': newId,
+            'type': newType,
+          });
+
           return MarkdownWidget(
             content:
-                '✅ Started planned activity "${plannedActivity.title}" as new $newType activity (ID: $newId)',
+                '✅ Started planned activity "${plannedActivity.title}" as new $newType activity!\n\n🎯 Target: $targetValue ${newType == 'COUNT' ? 'repetitions' : 'minutes'}\n📝 Description: ${plannedActivity.description}\n🆔 New ID: $newId',
           );
         } catch (e) {
           developer.log('Error starting planned activity: $e');
@@ -1624,6 +1595,104 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
           return MarkdownWidget(content: '❌ Error creating custom list: $e');
         }
 
+      case 'delete_activity':
+        final args = call.args;
+        final id = args['id'] as String?;
+
+        if (id == null || id.isEmpty) {
+          return MarkdownWidget(
+            content: '❌ Please provide an activity ID to delete.',
+          );
+        }
+
+        try {
+          final activity = _activityService.getActivity(id);
+          if (activity == null) {
+            return MarkdownWidget(
+              content: '❌ Activity with ID "$id" not found.',
+            );
+          }
+
+          final title = activity.title;
+          await _activityService.deleteActivity(id);
+
+          developer.log('Deleted activity: $title (ID: $id)');
+
+          return MarkdownWidget(
+            content:
+                '✅ Successfully deleted activity "$title". It has been removed from all collections.',
+          );
+        } catch (e) {
+          developer.log('Error deleting activity: $e');
+          return MarkdownWidget(content: '❌ Error deleting activity: $e');
+        }
+
+      case 'suggest_activity':
+        final args = call.args;
+        final criteria = args['criteria'] as String? ?? '';
+
+        try {
+          final allActivities = _getAllActivitiesForAgent();
+          final plannedActivities = allActivities.where((a) {
+            return a['type'] == 'planned';
+          }).toList();
+
+          if (plannedActivities.isEmpty) {
+            return MarkdownWidget(
+              content:
+                  '💡 I don\'t see any planned activities to suggest. Would you like me to help you create some goals for today?',
+            );
+          }
+
+          // Simple suggestion logic - pick the first planned activity or one matching criteria
+          Map<String, dynamic> selectedActivity;
+          if (criteria.isNotEmpty) {
+            final normalizedCriteria = _normalize(criteria);
+            final matches = plannedActivities.where((a) {
+              return _normalize(
+                    a['title'] as String,
+                  ).contains(normalizedCriteria) ||
+                  _normalize(
+                    a['description'] as String? ?? '',
+                  ).contains(normalizedCriteria);
+            }).toList();
+
+            selectedActivity = matches.isNotEmpty
+                ? matches.first
+                : plannedActivities.first;
+          } else {
+            selectedActivity = plannedActivities.first;
+          }
+
+          // Convert planned activity to active activity
+          final plannedId = selectedActivity['id'] as String;
+          final title = selectedActivity['title'] as String;
+          final estimatedDuration = selectedActivity['total'] as int;
+
+          // Create new active activity based on planned activity
+          final newId = await _activityService.createNewActivity(
+            'DURATION',
+            title,
+            estimatedDuration,
+            description: 'Started from planned activity',
+          );
+
+          // Delete the planned activity
+          await _activityService.deleteActivity(plannedId);
+
+          developer.log(
+            'Converted planned activity $plannedId to active activity $newId',
+          );
+
+          return MarkdownWidget(
+            content:
+                '🎯 Perfect! I\'ve moved **"$title"** from your planned activities to today\'s active goals. You have $estimatedDuration minutes allocated for this. Ready to get started?',
+          );
+        } catch (e) {
+          developer.log('Error suggesting activity: $e');
+          return MarkdownWidget(content: '❌ Error suggesting activity: $e');
+        }
+
       default:
         return null;
     }
@@ -1631,10 +1700,10 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
 
   String _convertActivitiesToCSV(List<dynamic> activities) {
     if (activities.isEmpty) {
-      return 'No activities to export';
+      return 'Title,Type,Total,Done,Progress %,Timestamp,Status,Description\n"No activities to export","","","","","",""';
     }
 
-    // CSV header
+    // Enhanced CSV header with description for planned activities
     final headers = [
       'Title',
       'Type',
@@ -1643,6 +1712,7 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
       'Progress %',
       'Timestamp',
       'Status',
+      'Description',
     ];
     final csvRows = [headers.join(',')];
 
@@ -1650,22 +1720,37 @@ class _ChatInterfaceState extends ConsumerState<ChatInterface> {
     for (final activity in activities) {
       if (activity is Map<String, dynamic>) {
         final title = activity['title'] ?? '';
-        final type = activity['type'] ?? 'COUNT';
+        final type = (activity['type'] ?? 'COUNT').toString().toUpperCase();
         final total = activity['total'] ?? 0;
         final done = activity['done'] ?? 0;
-        final progress = total > 0 ? ((done / total) * 100).round() : 0;
+        final description = activity['description'] ?? '';
+        final plannedType = activity['planned_type'] ?? '';
+
+        // Handle different activity types
+        String status;
+        String progressText;
+        if (type == 'PLANNED') {
+          status = 'Planned';
+          progressText = 'N/A';
+        } else {
+          final progress = total > 0 ? ((done / total) * 100).round() : 0;
+          progressText = '$progress%';
+          status = progress >= 100 ? 'Completed' : 'In Progress';
+        }
+
         final timestamp =
             activity['timestamp'] ?? DateTime.now().toIso8601String();
-        final status = progress >= 100 ? 'Completed' : 'In Progress';
+        final typeDisplay = type == 'PLANNED' ? 'PLANNED ($plannedType)' : type;
 
         final row = [
           '"${title.replaceAll('"', '""')}"', // Escape quotes in CSV
-          type,
+          typeDisplay,
           total.toString(),
           done.toString(),
-          '$progress%',
-          timestamp,
+          progressText,
+          timestamp.split('T')[0], // Just the date part
           status,
+          '"${description.replaceAll('"', '""')}"', // Escape quotes in description
         ];
 
         csvRows.add(row.join(','));
