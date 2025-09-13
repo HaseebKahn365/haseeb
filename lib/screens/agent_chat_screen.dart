@@ -24,6 +24,7 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
   bool _isStreaming = false;
+  bool _messagesLoaded = false;
   StreamSubscription<GenerateContentResponse>? _streamSubscription;
 
   // Firebase AI model
@@ -133,12 +134,25 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
     );
     dev.log('initState: generative model configured with tools');
 
-    // Initialize chat session once for conversation history
-    _chatSession = _model.startChat();
-    dev.log('initState: chat session initialized');
-
     // Load persisted messages so chat state is preserved across screen switches
-    _loadMessages();
+    await _loadMessages();
+
+    // Build history for chat session
+    final history = <Content>[];
+    for (final message in _messages) {
+      if (message.isUser) {
+        history.add(Content.text(message.text));
+      } else {
+        // For agent messages, use the text (widgets are handled separately in UI)
+        history.add(Content.text(message.text));
+      }
+    }
+
+    // Initialize chat session with conversation history
+    _chatSession = _model.startChat(history: history);
+    dev.log(
+      'initState: chat session initialized with ${history.length} messages',
+    );
   }
 
   @override
@@ -182,6 +196,7 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
   }
 
   Future<void> _loadMessages() async {
+    if (_messagesLoaded) return;
     try {
       final prefs = await SharedPreferences.getInstance();
       final list = prefs.getStringList('agent_chat_messages') ?? [];
@@ -199,6 +214,7 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
       } else {
         dev.log('_loadMessages: no messages to restore');
       }
+      _messagesLoaded = true;
     } catch (e) {
       dev.log('_loadMessages: error loading messages -> $e');
     }
