@@ -19,18 +19,27 @@ class AgentChatScreen extends StatefulWidget {
   State<AgentChatScreen> createState() => _AgentChatScreenState();
 }
 
+double _scrollPosition = 0;
+
 class _AgentChatScreenState extends State<AgentChatScreen> {
+  // Static variables to preserve across page switches
+  static FirebaseAI? _firebaseAI;
+  static GenerativeModel? _model;
+  static ChatSession? _chatSession;
+  static final List<ChatMessage> _messages = [];
+  static String? _systemPrompt;
+  static bool _messagesLoaded = false;
+  static bool _initialized = false;
+
   final TextEditingController _controller = TextEditingController();
-  final ScrollController _scrollController = ScrollController();
-  final List<ChatMessage> _messages = [];
+  final ScrollController _scrollController = ScrollController(
+    initialScrollOffset: _scrollPosition,
+    onDetach: (position) {
+      _scrollPosition = position.pixels;
+    },
+  );
   bool _isStreaming = false;
   StreamSubscription<GenerateContentResponse>? _streamSubscription;
-
-  // Firebase AI model
-  late final FirebaseAI _firebaseAI;
-  late final GenerativeModel _model;
-  late final ChatSession _chatSession;
-  late String systemPrompt;
 
   @override
   void initState() {
@@ -39,12 +48,17 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
   }
 
   Future<void> _initializeAsync() async {
+    if (_initialized) {
+      dev.log('Already initialized, skipping');
+      return;
+    }
+
     dev.log('initState: initializing Firebase AI generative model');
-    systemPrompt = await rootBundle.loadString('assets/system_prompt.md');
+    _systemPrompt = await rootBundle.loadString('assets/system_prompt.md');
     _firebaseAI = FirebaseAI.googleAI();
     dev.log('initState: FirebaseAI.googleAI() returned');
-    _model = _firebaseAI.generativeModel(
-      systemInstruction: Content.system(systemPrompt),
+    _model = _firebaseAI!.generativeModel(
+      systemInstruction: Content.system(_systemPrompt!),
       model: 'gemini-2.5-flash',
 
       tools: [
@@ -133,12 +147,26 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
     );
     dev.log('initState: generative model configured with tools');
 
-    // Initialize chat session once for conversation history
-    _chatSession = _model.startChat();
-    dev.log('initState: chat session initialized');
-
     // Load persisted messages so chat state is preserved across screen switches
-    _loadMessages();
+    await _loadMessages();
+
+    // Build history for chat session
+    final history = <Content>[];
+    for (final message in _messages) {
+      if (message.isUser) {
+        history.add(Content.text(message.text));
+      } else {
+        history.add(Content.text(message.text));
+      }
+    }
+
+    // Initialize chat session with conversation history
+    _chatSession = _model!.startChat(history: history);
+    dev.log(
+      'initState: chat session initialized with ${_messages.length} messages',
+    );
+
+    _initialized = true;
   }
 
   @override
@@ -182,6 +210,7 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
   }
 
   Future<void> _loadMessages() async {
+    if (_messagesLoaded) return;
     try {
       final prefs = await SharedPreferences.getInstance();
       final list = prefs.getStringList('agent_chat_messages') ?? [];
@@ -190,15 +219,13 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
         return ChatMessage.fromJson(map);
       }).toList();
       if (messages.isNotEmpty) {
-        setState(() {
-          _messages.clear();
-          _messages.addAll(messages);
-        });
+        _messages.clear();
+        _messages.addAll(messages);
         dev.log('_loadMessages: restored ${messages.length} messages');
-        _scrollToBottom();
       } else {
         dev.log('_loadMessages: no messages to restore');
       }
+      _messagesLoaded = true;
     } catch (e) {
       dev.log('_loadMessages: error loading messages -> $e');
     }
@@ -243,7 +270,7 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
       dev.log('sendMessage: created content -> ${content.toString()}');
 
       // Listen to the stream
-      _streamSubscription = _chatSession
+      _streamSubscription = _chatSession!
           .sendMessageStream(content)
           .listen(
             (GenerateContentResponse response) {
@@ -262,7 +289,7 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
                   dev.log(
                     'stream: function call received -> ${call.name} args=${call.args}',
                   );
-                  _handleFunctionCall(_chatSession, call);
+                  _handleFunctionCall(_chatSession!, call);
                 }
               }
             },
@@ -556,6 +583,7 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
   Widget _buildMessagesList() {
     return ListView.builder(
       controller: _scrollController,
+
       padding: const EdgeInsets.all(16),
       itemCount: _messages.length,
       itemBuilder: (context, index) {
