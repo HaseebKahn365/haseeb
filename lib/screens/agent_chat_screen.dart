@@ -270,13 +270,16 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
             },
             onError: (error) {
               dev.log('stream: onError -> $error');
-              _addMessage(
-                ChatMessage(
-                  text: 'Error: $error',
-                  isUser: false,
-                  timestamp: DateTime.now(),
-                ),
-              );
+              // Only show error if it's not a connection issue that we can retry
+              if (!error.toString().contains('Connection closed')) {
+                _addMessage(
+                  ChatMessage(
+                    text: 'Error: $error',
+                    isUser: false,
+                    timestamp: DateTime.now(),
+                  ),
+                );
+              }
               setState(() {
                 _isStreaming = false;
               });
@@ -337,6 +340,9 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
         );
         _streamSubscription?.cancel();
 
+        // Add a small delay to ensure the previous stream is properly closed
+        await Future.delayed(const Duration(milliseconds: 100));
+
         // Continue the stream with the confirmation
         _streamSubscription = chat
             .sendMessageStream(functionResponse)
@@ -364,13 +370,16 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
               },
               onError: (error) {
                 dev.log('post-function stream: onError -> $error');
-                _addMessage(
-                  ChatMessage(
-                    text: 'Error in function response: $error',
-                    isUser: false,
-                    timestamp: DateTime.now(),
-                  ),
-                );
+                // Only show error if it's not a connection issue that we can retry
+                if (!error.toString().contains('Connection closed')) {
+                  _addMessage(
+                    ChatMessage(
+                      text: 'Error in function response: $error',
+                      isUser: false,
+                      timestamp: DateTime.now(),
+                    ),
+                  );
+                }
                 setState(() {
                   _isStreaming = false;
                 });
@@ -389,8 +398,11 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
         'result': result,
       });
 
-      dev.log('handleFunctionCall: created function response for ${call.name}');
+      dev.log('handleFunctionCall: created function response for ${call.name} with data: ${functionResponse.toJson()}');
       _streamSubscription?.cancel();
+
+      // Add a small delay to ensure the previous stream is properly closed
+      await Future.delayed(const Duration(milliseconds: 100));
 
       _streamSubscription = chat
           .sendMessageStream(functionResponse)
@@ -418,13 +430,16 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
             },
             onError: (error) {
               dev.log('post-function stream: onError -> $error');
-              _addMessage(
-                ChatMessage(
-                  text: 'Error in function response: $error',
-                  isUser: false,
-                  timestamp: DateTime.now(),
-                ),
-              );
+              // Only show error if it's not a connection issue that we can retry
+              if (!error.toString().contains('Connection closed')) {
+                _addMessage(
+                  ChatMessage(
+                    text: 'Error in function response: $error',
+                    isUser: false,
+                    timestamp: DateTime.now(),
+                  ),
+                );
+              }
               setState(() {
                 _isStreaming = false;
               });
@@ -450,7 +465,6 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
     switch (call.name) {
       case 'displayHelloWorld':
         // Simulate some processing time
-        await Future.delayed(const Duration(milliseconds: 500));
         dev.log('_executeFunction: displayHelloWorld returning');
         return 'Hello, World!';
 
@@ -459,7 +473,6 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
         final a = (args['a'] as num).toDouble();
         final b = (args['b'] as num).toDouble();
         // Simulate processing time
-        await Future.delayed(const Duration(milliseconds: 300));
         dev.log('_executeFunction: addTool computed $a + $b = ${a + b}');
         return a + b;
 
