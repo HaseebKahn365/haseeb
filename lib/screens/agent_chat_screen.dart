@@ -4,11 +4,13 @@ import 'dart:developer' as dev;
 
 import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:haseeb/widgets/radial_bar_widget.dart';
-import 'package:haseeb/widgets/activity_card_widget.dart';
-import 'package:haseeb/widgets/export_data_widget.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../widgets/activity_card_widget.dart';
+import '../widgets/export_data_widget.dart';
+import '../widgets/radial_bar_widget.dart';
 
 class AgentChatScreen extends StatefulWidget {
   const AgentChatScreen({super.key});
@@ -27,71 +29,109 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
   // Firebase AI model
   late final FirebaseAI _firebaseAI;
   late final GenerativeModel _model;
-  static const _prefsKey = 'agent_chat_messages_v1';
+  late String systemPrompt;
 
   @override
   void initState() {
     super.initState();
+    _initializeAsync();
+  }
+
+  Future<void> _initializeAsync() async {
     dev.log('initState: initializing Firebase AI generative model');
+    systemPrompt = await rootBundle.loadString('assets/system_prompt.md');
     _firebaseAI = FirebaseAI.googleAI();
-    // Declare the four widget tools required by the UI
+    dev.log('initState: FirebaseAI.googleAI() returned');
     _model = _firebaseAI.generativeModel(
+      systemInstruction: Content.system(systemPrompt),
       model: 'gemini-2.5-flash',
       tools: [
         Tool.functionDeclarations([
-          // renderRadialBar: total (number), done (number), title (string)
+          // Existing tools: displayHelloWorld, addTool, markdownWidget
           FunctionDeclaration(
-            'renderRadialBar',
-            'Displays a radial progress bar',
-            parameters: <String, Schema>{
-              'total': Schema.number(description: 'Total value'),
-              'done': Schema.number(description: 'Completed value'),
-              'title': Schema.string(description: 'Title for the radial bar'),
-            },
-            // required: total, done, title (enforced at runtime)
+            'displayHelloWorld',
+            'Displays a simple "Hello, World!" message',
+            parameters: <String, Schema>{},
           ),
 
-          // renderActivityCard: title, total, done, timestamp (ISO), type
+          FunctionDeclaration(
+            'addTool',
+            'Adds two numbers together and returns the sum',
+            parameters: <String, Schema>{
+              'a': Schema.number(description: 'First number to add'),
+              'b': Schema.number(description: 'Second number to add'),
+            },
+          ),
+
+          FunctionDeclaration(
+            'markdownWidget',
+            'Displays a formatted markdown message showing the calculation',
+            parameters: <String, Schema>{
+              'numberA': Schema.number(
+                description: 'First number in the calculation',
+              ),
+              'numberB': Schema.number(
+                description: 'Second number in the calculation',
+              ),
+              'result': Schema.number(
+                description: 'The result of the calculation',
+              ),
+            },
+          ),
+
+          // NEW UI widget tools for rendering in-chat widgets
+          FunctionDeclaration(
+            'renderRadialBar',
+            'Render a radial progress bar widget (total, done, title)',
+            parameters: <String, Schema>{
+              'total': Schema.number(description: 'Total target value'),
+              'done': Schema.number(description: 'Completed value'),
+              'title': Schema.string(
+                description: 'Title to show on the radial bar',
+              ),
+            },
+          ),
+
           FunctionDeclaration(
             'renderActivityCard',
-            'Displays an activity summary card',
+            'Render an activity summary card (title, total, done, timestamp, type)',
             parameters: <String, Schema>{
               'title': Schema.string(description: 'Activity title'),
               'total': Schema.number(description: 'Total target'),
-              'done': Schema.number(description: 'Completed amount'),
-              'timestamp': Schema.string(description: 'ISO 8601 timestamp'),
+              'done': Schema.number(description: 'Completed value'),
+              'timestamp': Schema.string(
+                description: 'ISO 8601 timestamp or epoch millis',
+              ),
               'type': Schema.string(description: "'COUNT' or 'DURATION'"),
             },
-            // required: title, total, done, timestamp, type
           ),
 
-          // renderMarkdown: content (string)
           FunctionDeclaration(
             'renderMarkdown',
-            'Renders markdown-formatted text',
+            'Render markdown-formatted content inline',
             parameters: <String, Schema>{
-              'content': Schema.string(description: 'Markdown content'),
+              'content': Schema.string(
+                description: 'Markdown content to render',
+              ),
             },
-            // required: content
           ),
 
-          // initiateDataExport: data (CSV string), filename
           FunctionDeclaration(
             'initiateDataExport',
-            'Provides an export interface for CSV data',
+            'Render an export-data widget (CSV data + filename)',
             parameters: <String, Schema>{
-              'data': Schema.string(description: 'CSV-formatted data'),
-              'filename': Schema.string(description: 'Filename for export'),
+              'data': Schema.string(description: 'CSV formatted data'),
+              'filename': Schema.string(
+                description: 'Filename to use for export',
+              ),
             },
-            // required: data, filename
           ),
         ]),
       ],
     );
-  dev.log('initState: generative model configured with widget tools');
-
-  // Load persisted messages (do not await here)
-  _loadMessages();
+    dev.log('initState: generative model configured with tools');
+    // Load persisted messages so chat state is preserved across screen switches
+    _loadMessages();
   }
 
   @override
@@ -127,7 +167,7 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       final list = _messages.map((m) => jsonEncode(m.toJson())).toList();
-      await prefs.setStringList(_prefsKey, list);
+      await prefs.setStringList('agent_chat_messages', list);
       dev.log('_saveMessages: persisted ${list.length} messages');
     } catch (e) {
       dev.log('_saveMessages: error saving messages -> $e');
@@ -137,7 +177,7 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
   Future<void> _loadMessages() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-  final list = prefs.getStringList(_prefsKey) ?? [];
+      final list = prefs.getStringList('agent_chat_messages') ?? [];
       final messages = list.map((s) {
         final map = jsonDecode(s) as Map<String, dynamic>;
         return ChatMessage.fromJson(map);
@@ -262,208 +302,134 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
       dev.log(
         'handleFunctionCall: executing ${call.name} with args=${call.args}',
       );
-      // Map function calls to widget rendering
-      if (call.name == 'renderRadialBar') {
-        final args = call.args;
-        final widgetMsg = ChatMessage(
+
+      // If the function call corresponds to a widget render, create a widget message
+      final widgetTools = {
+        'renderRadialBar',
+        'renderActivityCard',
+        'renderMarkdown',
+        'initiateDataExport',
+      };
+
+      if (widgetTools.contains(call.name)) {
+        dev.log('handleFunctionCall: mapping ${call.name} to widget message');
+
+        // Normalize args (call.args is non-nullable from the SDK)
+        final args = Map<String, dynamic>.from(call.args);
+
+        // Add a widget message to the chat history
+        final widgetMessage = ChatMessage(
           text: '',
           isUser: false,
           timestamp: DateTime.now(),
-          widgetType: 'radial',
-          widgetData: {
-            'total': args['total'],
-            'done': args['done'],
-            'title': args['title'],
-          },
+          widgetType: call.name,
+          widgetData: args,
         );
-        _addMessage(widgetMsg);
+        _addMessage(widgetMessage);
 
-        // Send confirmation back to model
+        // Create function response confirming rendering
         final functionResponse = Content.functionResponse(call.name, {
-          'confirmation': 'The radial progress bar has been displayed.'
+          'status': 'rendered',
         });
 
-        dev.log('handleFunctionCall: sent confirmation for renderRadialBar');
-        _streamSubscription?.cancel();
-        _streamSubscription = chat.sendMessageStream(functionResponse).listen(
-          (GenerateContentResponse response) {
-            if (response.text != null && response.text!.isNotEmpty) {
-              _updateLastMessage(response.text!);
-            }
-            if (response.functionCalls.isNotEmpty) {
-              for (final newCall in response.functionCalls) {
-                _handleFunctionCall(chat, newCall);
-              }
-            }
-          },
-          onDone: () {
-            setState(() {
-              _isStreaming = false;
-            });
-            _streamSubscription?.cancel();
-          },
-          onError: (error) {
-            _addMessage(
-              ChatMessage(
-                text: 'Error in function response: $error',
-                isUser: false,
-                timestamp: DateTime.now(),
-              ),
-            );
-            setState(() {
-              _isStreaming = false;
-            });
-          },
+        dev.log(
+          'handleFunctionCall: sending function response confirmation for ${call.name}',
         );
+        _streamSubscription?.cancel();
+
+        // Continue the stream with the confirmation
+        _streamSubscription = chat
+            .sendMessageStream(functionResponse)
+            .listen(
+              (GenerateContentResponse response) {
+                dev.log(
+                  'post-function stream: received response -> text length=${response.text?.length ?? 0} functionCalls=${response.functionCalls.length}',
+                );
+                if (response.text != null && response.text!.isNotEmpty) {
+                  _updateLastMessage(response.text!);
+                }
+
+                if (response.functionCalls.isNotEmpty) {
+                  for (final newCall in response.functionCalls) {
+                    _handleFunctionCall(chat, newCall);
+                  }
+                }
+              },
+              onDone: () {
+                dev.log('post-function stream: onDone');
+                setState(() {
+                  _isStreaming = false;
+                });
+                _streamSubscription?.cancel();
+              },
+              onError: (error) {
+                dev.log('post-function stream: onError -> $error');
+                _addMessage(
+                  ChatMessage(
+                    text: 'Error in function response: $error',
+                    isUser: false,
+                    timestamp: DateTime.now(),
+                  ),
+                );
+                setState(() {
+                  _isStreaming = false;
+                });
+              },
+            );
+
         return;
       }
 
-      if (call.name == 'renderActivityCard') {
-        final args = call.args;
-        final widgetMsg = ChatMessage(
-          text: '',
-          isUser: false,
-          timestamp: DateTime.now(),
-          widgetType: 'activity_card',
-          widgetData: {
-            'title': args['title'],
-            'total': args['total'],
-            'done': args['done'],
-            'timestamp': args['timestamp'],
-            'type': args['type'],
-          },
-        );
-        _addMessage(widgetMsg);
-        final functionResponse = Content.functionResponse(call.name, {
-          'confirmation': 'Activity card displayed.'
-        });
-        _streamSubscription?.cancel();
-        _streamSubscription = chat.sendMessageStream(functionResponse).listen(
-          (GenerateContentResponse response) {
-            if (response.text != null && response.text!.isNotEmpty) {
-              _updateLastMessage(response.text!);
-            }
-          },
-          onDone: () {
-            setState(() {
-              _isStreaming = false;
-            });
-            _streamSubscription?.cancel();
-          },
-          onError: (error) {
-            _addMessage(
-              ChatMessage(
-                text: 'Error in function response: $error',
-                isUser: false,
-                timestamp: DateTime.now(),
-              ),
-            );
-            setState(() {
-              _isStreaming = false;
-            });
-          },
-        );
-        return;
-      }
-
-      if (call.name == 'renderMarkdown') {
-        final args = call.args;
-        final widgetMsg = ChatMessage(
-          text: '',
-          isUser: false,
-          timestamp: DateTime.now(),
-          widgetType: 'markdown',
-          widgetData: {'content': args['content']},
-        );
-        _addMessage(widgetMsg);
-        final functionResponse = Content.functionResponse(call.name, {
-          'confirmation': 'Markdown rendered.'
-        });
-        _streamSubscription?.cancel();
-        _streamSubscription = chat.sendMessageStream(functionResponse).listen(
-          (GenerateContentResponse response) {
-            if (response.text != null && response.text!.isNotEmpty) {
-              _updateLastMessage(response.text!);
-            }
-          },
-          onDone: () {
-            setState(() {
-              _isStreaming = false;
-            });
-            _streamSubscription?.cancel();
-          },
-          onError: (error) {
-            _addMessage(
-              ChatMessage(
-                text: 'Error in function response: $error',
-                isUser: false,
-                timestamp: DateTime.now(),
-              ),
-            );
-            setState(() {
-              _isStreaming = false;
-            });
-          },
-        );
-        return;
-      }
-
-      if (call.name == 'initiateDataExport') {
-        final args = call.args;
-        final widgetMsg = ChatMessage(
-          text: '',
-          isUser: false,
-          timestamp: DateTime.now(),
-          widgetType: 'export',
-          widgetData: {
-            'data': args['data'],
-            'filename': args['filename'],
-          },
-        );
-        _addMessage(widgetMsg);
-        final functionResponse = Content.functionResponse(call.name, {
-          'confirmation': 'Export widget displayed.'
-        });
-        _streamSubscription?.cancel();
-        _streamSubscription = chat.sendMessageStream(functionResponse).listen(
-          (GenerateContentResponse response) {
-            if (response.text != null && response.text!.isNotEmpty) {
-              _updateLastMessage(response.text!);
-            }
-          },
-          onDone: () {
-            setState(() {
-              _isStreaming = false;
-            });
-            _streamSubscription?.cancel();
-          },
-          onError: (error) {
-            _addMessage(
-              ChatMessage(
-                text: 'Error in function response: $error',
-                isUser: false,
-                timestamp: DateTime.now(),
-              ),
-            );
-            setState(() {
-              _isStreaming = false;
-            });
-          },
-        );
-        return;
-      }
-
-      // Fallback: execute generic function
+      // Fallback: execute function locally and send the result back
+      dev.log('handleFunctionCall: executing local function ${call.name}');
       final result = await _executeFunction(call);
+      dev.log('handleFunctionCall: result from ${call.name} -> $result');
+
       final functionResponse = Content.functionResponse(call.name, {
         'result': result,
       });
+
+      dev.log('handleFunctionCall: created function response for ${call.name}');
       _streamSubscription?.cancel();
-      _streamSubscription = chat.sendMessageStream(functionResponse).listen((GenerateContentResponse response) {
-        if (response.text != null && response.text!.isNotEmpty) {
-          _updateLastMessage(response.text!);
-        }
-      });
+
+      _streamSubscription = chat
+          .sendMessageStream(functionResponse)
+          .listen(
+            (GenerateContentResponse response) {
+              dev.log(
+                'post-function stream: received response -> text length=${response.text?.length ?? 0} functionCalls=${response.functionCalls.length}',
+              );
+              if (response.text != null && response.text!.isNotEmpty) {
+                _updateLastMessage(response.text!);
+              }
+
+              if (response.functionCalls.isNotEmpty) {
+                for (final newCall in response.functionCalls) {
+                  _handleFunctionCall(chat, newCall);
+                }
+              }
+            },
+            onDone: () {
+              dev.log('post-function stream: onDone');
+              setState(() {
+                _isStreaming = false;
+              });
+              _streamSubscription?.cancel();
+            },
+            onError: (error) {
+              dev.log('post-function stream: onError -> $error');
+              _addMessage(
+                ChatMessage(
+                  text: 'Error in function response: $error',
+                  isUser: false,
+                  timestamp: DateTime.now(),
+                ),
+              );
+              setState(() {
+                _isStreaming = false;
+              });
+            },
+          );
     } catch (e) {
       dev.log('handleFunctionCall: exception executing ${call.name} -> $e');
       _addMessage(
@@ -599,53 +565,105 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
                       color: Theme.of(context).colorScheme.onPrimary,
                     ),
                   )
-                : (message.widgetType != null
-                    ? _buildWidgetFromMessage(message)
-                    : MarkdownBody(
-                        data: message.text,
-                        styleSheet: MarkdownStyleSheet(
-                          p: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurface,
-                          ),
-                        ),
-                      )),
+                : _buildAgentContent(message),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildWidgetFromMessage(ChatMessage message) {
-    final data = message.widgetData ?? {};
-    switch (message.widgetType) {
-      case 'radial':
-        return RadialBarWidget(
-          total: (data['total'] as num).toInt(),
-          done: (data['done'] as num).toInt(),
-          title: data['title'] as String? ?? 'Progress',
+  Widget _buildAgentContent(ChatMessage message) {
+    // If this message is a widget message, map to the corresponding widget
+    if (message.widgetType != null && message.widgetData != null) {
+      final type = message.widgetType!;
+      final data = message.widgetData!;
+
+      try {
+        switch (type) {
+          case 'renderRadialBar':
+            final total = (data['total'] is num)
+                ? (data['total'] as num).toInt()
+                : int.tryParse('${data['total']}') ?? 0;
+            final done = (data['done'] is num)
+                ? (data['done'] as num).toInt()
+                : int.tryParse('${data['done']}') ?? 0;
+            final title = data['title']?.toString() ?? 'Progress';
+            return RadialBarWidget(total: total, done: done, title: title);
+
+          case 'renderActivityCard':
+            final title = data['title']?.toString() ?? 'Activity';
+            final total = (data['total'] is num)
+                ? (data['total'] as num).toInt()
+                : int.tryParse('${data['total']}') ?? 0;
+            final done = (data['done'] is num)
+                ? (data['done'] as num).toInt()
+                : int.tryParse('${data['done']}') ?? 0;
+            DateTime timestamp;
+            if (data['timestamp'] is String) {
+              timestamp =
+                  DateTime.tryParse(data['timestamp']) ?? DateTime.now();
+            } else if (data['timestamp'] is num) {
+              timestamp = DateTime.fromMillisecondsSinceEpoch(
+                (data['timestamp'] as num).toInt(),
+              );
+            } else {
+              timestamp = DateTime.now();
+            }
+            final typeStr = data['type']?.toString() ?? 'COUNT';
+            return ActivityCardWidget(
+              title: title,
+              total: total,
+              done: done,
+              timestamp: timestamp,
+              type: typeStr,
+            );
+
+          case 'initiateDataExport':
+            final csv =
+                data['csv']?.toString() ?? data['data']?.toString() ?? '';
+            final filename = data['filename']?.toString() ?? 'export.csv';
+            return ExportDataWidget(data: csv, filename: filename);
+
+          case 'renderMarkdown':
+            final md = data['content']?.toString() ?? message.text;
+            return MarkdownBody(
+              data: md,
+              styleSheet: MarkdownStyleSheet(
+                p: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+              ),
+            );
+
+          default:
+            // Unknown widget type: fall back to text
+            return MarkdownBody(
+              data: message.text.isNotEmpty
+                  ? message.text
+                  : '**Unsupported widget: $type**',
+              styleSheet: MarkdownStyleSheet(
+                p: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+              ),
+            );
+        }
+      } catch (e) {
+        dev.log('_buildAgentContent: error building widget $type -> $e');
+        return MarkdownBody(
+          data: message.text.isNotEmpty
+              ? message.text
+              : '**Widget render error: $e**',
+          styleSheet: MarkdownStyleSheet(
+            p: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+          ),
         );
-
-      case 'activity_card':
-        return ActivityCardWidget(
-          title: data['title'] as String? ?? 'Activity',
-          total: (data['total'] as num).toInt(),
-          done: (data['done'] as num).toInt(),
-          timestamp: DateTime.parse(data['timestamp'] as String),
-          type: data['type'] as String? ?? 'COUNT',
-        );
-
-      case 'export':
-        return ExportDataWidget(
-          data: data['data'] as String? ?? '',
-          filename: data['filename'] as String? ?? 'export.csv',
-        );
-
-      case 'markdown':
-        return MarkdownBody(data: data['content'] as String? ?? '');
-
-      default:
-        return Text(message.text);
+      }
     }
+
+    // Default: render markdown text
+    return MarkdownBody(
+      data: message.text,
+      styleSheet: MarkdownStyleSheet(
+        p: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+      ),
+    );
   }
 
   Widget _buildInputArea() {
@@ -692,7 +710,7 @@ class ChatMessage {
   final String text;
   final bool isUser;
   final DateTime timestamp;
-  final String? widgetType; // 'radial', 'activity_card', 'markdown', 'export'
+  final String? widgetType; // e.g. renderRadialBar, renderActivityCard
   final Map<String, dynamic>? widgetData;
 
   ChatMessage({
@@ -703,13 +721,19 @@ class ChatMessage {
     this.widgetData,
   });
 
-  ChatMessage copyWith({String? text, bool? isUser, DateTime? timestamp}) {
+  ChatMessage copyWith({
+    String? text,
+    bool? isUser,
+    DateTime? timestamp,
+    String? widgetType,
+    Map<String, dynamic>? widgetData,
+  }) {
     return ChatMessage(
       text: text ?? this.text,
       isUser: isUser ?? this.isUser,
       timestamp: timestamp ?? this.timestamp,
-      widgetType: this.widgetType,
-      widgetData: this.widgetData,
+      widgetType: widgetType ?? this.widgetType,
+      widgetData: widgetData ?? this.widgetData,
     );
   }
 
@@ -724,6 +748,7 @@ class ChatMessage {
   }
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    final widgetData = json['widgetData'];
     return ChatMessage(
       text: json['text'] as String? ?? '',
       isUser: json['isUser'] as bool? ?? false,
@@ -731,7 +756,9 @@ class ChatMessage {
         json['timestamp'] as String? ?? DateTime.now().toIso8601String(),
       ),
       widgetType: json['widgetType'] as String?,
-      widgetData: (json['widgetData'] as Map<String, dynamic>?) ?? null,
+      widgetData: widgetData is Map
+          ? Map<String, dynamic>.from(widgetData)
+          : null,
     );
   }
 }
