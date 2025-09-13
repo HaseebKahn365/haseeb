@@ -6,6 +6,7 @@ import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../widgets/activity_card_widget.dart';
@@ -16,12 +17,12 @@ class AgentChatScreen extends StatefulWidget {
   const AgentChatScreen({super.key});
 
   @override
-  State<AgentChatScreen> createState() => _AgentChatScreenState();
+  State<AgentChatScreen> createState() => AgentChatScreenState();
 }
 
 double _scrollPosition = 0;
 
-class _AgentChatScreenState extends State<AgentChatScreen> {
+class AgentChatScreenState extends State<AgentChatScreen> {
   // Static variables to preserve across page switches
   static FirebaseAI? _firebaseAI;
   static GenerativeModel? _model;
@@ -30,6 +31,24 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
   static String? _systemPrompt;
   static bool _messagesLoaded = false;
   static bool _initialized = false;
+  //call back for clearing chat
+  static void clearChat() {
+    _messages.clear();
+    _messagesLoaded = false;
+    _initialized = false;
+    _scrollPosition = 0;
+    deleteFromSharedPreferences();
+  }
+
+  static Future<void> deleteFromSharedPreferences() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('agent_chat_messages');
+      dev.log('deleteFromSharedPreferences: cleared persisted messages');
+    } catch (e) {
+      dev.log('deleteFromSharedPreferences: error clearing messages -> $e');
+    }
+  }
 
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController(
@@ -298,6 +317,7 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
               setState(() {
                 _isStreaming = false;
               });
+
               _streamSubscription?.cancel();
             },
             onError: (error) {
@@ -398,6 +418,19 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
                 setState(() {
                   _isStreaming = false;
                 });
+                //show a small toast
+                Fluttertoast.showToast(
+                  msg: "Done Responding",
+                  toastLength: Toast.LENGTH_SHORT,
+                  gravity: ToastGravity.TOP,
+                  timeInSecForIosWeb: 1,
+                  backgroundColor: Theme.of(
+                    context,
+                  ).colorScheme.primaryContainer,
+                  textColor: Theme.of(context).colorScheme.onPrimaryContainer,
+                  fontSize: 16.0,
+                );
+
                 _streamSubscription?.cancel();
               },
               onError: (error) {

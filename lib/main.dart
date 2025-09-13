@@ -58,7 +58,43 @@ class _MainScreenState extends State<MainScreen> {
     final titles = ['Home', 'Agent Chat', 'Settings', 'Widget Preview'];
 
     return Scaffold(
-      appBar: AppBar(title: Text(titles[_currentIndex])),
+      appBar: AppBar(
+        title: Text(titles[_currentIndex]),
+        actions: [
+          //show clear button but only on agent chat screen
+          if (_currentIndex == 1)
+            IconButton(
+              icon: const Icon(Icons.delete),
+              tooltip: 'Clear Chat History',
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('Clear Chat History'),
+                    content: const Text(
+                      'Are you sure you want to clear the chat history? This action cannot be undone.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Cancel'),
+                      ),
+                      ElevatedButton(
+                        onPressed: () {
+                          // Notify the AgentChatScreen to clear chat history
+                          developer.log('Clearing chat history');
+                          AgentChatScreenState.clearChat();
+                          Navigator.of(context).pop();
+                        },
+                        child: const Text('Clear'),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+        ],
+      ),
       body: _screens[_currentIndex],
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
