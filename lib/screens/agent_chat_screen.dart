@@ -29,6 +29,7 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
   // Firebase AI model
   late final FirebaseAI _firebaseAI;
   late final GenerativeModel _model;
+  late final ChatSession _chatSession;
   late String systemPrompt;
 
   @override
@@ -45,6 +46,7 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
     _model = _firebaseAI.generativeModel(
       systemInstruction: Content.system(systemPrompt),
       model: 'gemini-2.5-flash',
+
       tools: [
         Tool.functionDeclarations([
           // Existing tools: displayHelloWorld, addTool, markdownWidget
@@ -130,6 +132,11 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
       ],
     );
     dev.log('initState: generative model configured with tools');
+
+    // Initialize chat session once for conversation history
+    _chatSession = _model.startChat();
+    dev.log('initState: chat session initialized');
+
     // Load persisted messages so chat state is preserved across screen switches
     _loadMessages();
   }
@@ -230,15 +237,13 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
     );
 
     try {
-      // Start the streaming conversation
-      dev.log('sendMessage: starting chat session');
-      final chat = _model.startChat();
-      dev.log('sendMessage: chat session started');
+      // Use the persistent chat session for conversation history
+      dev.log('sendMessage: using persistent chat session');
       final content = Content.text(text);
       dev.log('sendMessage: created content -> ${content.toString()}');
 
       // Listen to the stream
-      _streamSubscription = chat
+      _streamSubscription = _chatSession
           .sendMessageStream(content)
           .listen(
             (GenerateContentResponse response) {
@@ -257,7 +262,7 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
                   dev.log(
                     'stream: function call received -> ${call.name} args=${call.args}',
                   );
-                  _handleFunctionCall(chat, call);
+                  _handleFunctionCall(_chatSession, call);
                 }
               }
             },
@@ -398,7 +403,9 @@ class _AgentChatScreenState extends State<AgentChatScreen> {
         'result': result,
       });
 
-      dev.log('handleFunctionCall: created function response for ${call.name} with data: ${functionResponse.toJson()}');
+      dev.log(
+        'handleFunctionCall: created function response for ${call.name} with data: ${functionResponse.toJson()}',
+      );
       _streamSubscription?.cancel();
 
       // Add a small delay to ensure the previous stream is properly closed
