@@ -62,97 +62,96 @@ This is a **markdown widget** that can display:
         ),
 
         _buildSectionHeader(context, 'Interactive Examples'),
-        _buildInteractiveSection(context),
       ],
     );
   }
+}
 
-  Widget _buildSectionHeader(BuildContext context, String title) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      child: Text(
-        title,
-        style: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-          color: Theme.of(context).colorScheme.onSurface,
+Widget _buildSectionHeader(BuildContext context, String title) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+    child: Text(
+      title,
+      style: TextStyle(
+        fontSize: 18,
+        fontWeight: FontWeight.bold,
+        color: Theme.of(context).colorScheme.onSurface,
+      ),
+    ),
+  );
+}
+
+Widget _buildInteractiveSection(BuildContext context) {
+  return Padding(
+    padding: const EdgeInsets.all(16),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Interactive Demo',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+            color: Theme.of(context).colorScheme.onSurface,
+          ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildInteractiveSection(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Interactive Demo',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Theme.of(context).colorScheme.onSurface,
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            ElevatedButton.icon(
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Radial Bar Widget - Shows progress visualization',
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.pie_chart),
+              label: const Text('Test Radial Bar'),
             ),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              ElevatedButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Radial Bar Widget - Shows progress visualization',
-                      ),
+            ElevatedButton.icon(
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'Activity Card Widget - Displays activity summary',
                     ),
-                  );
-                },
-                icon: const Icon(Icons.pie_chart),
-                label: const Text('Test Radial Bar'),
-              ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Activity Card Widget - Displays activity summary',
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.card_membership),
-                label: const Text('Test Activity Card'),
-              ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Markdown Widget - Renders formatted text'),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.text_fields),
-                label: const Text('Test Markdown'),
-              ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Export Widget - Handles data sharing'),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.share),
-                label: const Text('Test Export'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+                  ),
+                );
+              },
+              icon: const Icon(Icons.card_membership),
+              label: const Text('Test Activity Card'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Markdown Widget - Renders formatted text'),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.text_fields),
+              label: const Text('Test Markdown'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Export Widget - Handles data sharing'),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.share),
+              label: const Text('Test Export'),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
 }
