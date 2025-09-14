@@ -5,7 +5,10 @@ import 'dart:developer' as dev;
 import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:haseeb/models/activity.dart' as models_activity;
 import 'package:haseeb/providers/llm_tools.dart';
+import 'package:haseeb/repository/activity_manager.dart';
+import 'package:hive/hive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ChatMessage {
@@ -129,11 +132,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
       final history = <Content>[];
       for (final message in state.messages) {
-        if (message.isUser) {
-          history.add(Content.text(message.text));
-        } else {
-          history.add(Content.text(message.text));
-        }
+        // Both user and agent messages are added to history as text
+        history.add(Content.text(message.text));
       }
 
       _chatSession = _model!.startChat(history: history);
@@ -343,14 +343,93 @@ class ChatNotifier extends StateNotifier<ChatState> {
   Future<dynamic> _executeFunction(FunctionCall call) async {
     dev.log('_executeFunction: ${call.name} args=${call.args}');
     switch (call.name) {
-      case 'displayHelloWorld':
-        return 'Hello, World!';
+      case 'currentDateTime':
+        // Return current datetime. Support optional timezone and format hints.
+        dev.log(
+          '_executeFunction: currentDateTime called with args=${call.args}',
+        );
+        try {
+          final args = call.args as Map<String, dynamic>;
+          final tzRaw = (args['timezone'] as String?) ?? '';
+          final tz = tzRaw.toLowerCase();
+          final format = (args['format'] as String?)?.toLowerCase() ?? 'iso';
 
-      case 'addTool':
-        final args = call.args;
-        final a = (args['a'] as num).toDouble();
-        final b = (args['b'] as num).toDouble();
-        return a + b;
+          DateTime nowUtc = DateTime.now().toUtc();
+
+          // If timezone hints Pakistan/Karachi/PKT, convert to UTC+5
+          if (tz.isNotEmpty &&
+              (tz.contains('karachi') ||
+                  tz.contains('pakistan') ||
+                  tz == 'pkt')) {
+            final pkTime = nowUtc.add(const Duration(hours: 5));
+            if (format == 'human') {
+              // e.g. 2025-09-14 19:18:54 PKT
+              final human =
+                  '${pkTime.year.toString().padLeft(4, '0')}-'
+                  '${pkTime.month.toString().padLeft(2, '0')}-'
+                  '${pkTime.day.toString().padLeft(2, '0')} '
+                  '${pkTime.hour.toString().padLeft(2, '0')}:'
+                  '${pkTime.minute.toString().padLeft(2, '0')}:'
+                  '${pkTime.second.toString().padLeft(2, '0')} PKT';
+              return human;
+            }
+
+            // default: return ISO-like with offset
+            return '${pkTime.toIso8601String()}+05:00';
+          }
+
+          // default behavior: return UTC ISO 8601
+          return nowUtc.toIso8601String();
+        } catch (e) {
+          dev.log('currentDateTime: error formatting datetime -> $e');
+          return DateTime.now().toUtc().toIso8601String();
+        }
+
+      case 'addActivity':
+        try {
+          final args = call.args as Map<String, dynamic>;
+          final name = (args['name'] as String?)?.trim() ?? '';
+          final typeStr = (args['type'] as String?)?.toLowerCase() ?? 'count';
+          final type = (typeStr == 'time')
+              ? models_activity.ActivityType.time
+              : models_activity.ActivityType.count;
+
+          final id = DateTime.now().millisecondsSinceEpoch.toString();
+
+          // Try to persist via Hive/ActivityManager if boxes are available
+          try {
+            // Attempt to open boxes with conventional names; if they don't exist, this may still succeed
+            final activityBox = await Hive.openBox<models_activity.Activity>(
+              'activities',
+            );
+            final timeBox = await Hive.openBox<models_activity.TimeActivity>(
+              'time_activities',
+            );
+            final countBox = await Hive.openBox<models_activity.CountActivity>(
+              'count_activities',
+            );
+
+            final manager = ActivityManager(
+              activityBox: activityBox,
+              timeActivityBox: timeBox,
+              countActivityBox: countBox,
+            );
+
+            manager.addActivity(name.isEmpty ? 'New Activity' : name, type);
+            dev.log(
+              'addActivity: persisted activity id=$id name=$name type=$typeStr',
+            );
+            return id;
+          } catch (e) {
+            dev.log(
+              'addActivity: could not persist activity, returning id only -> $e',
+            );
+            return id;
+          }
+        } catch (e) {
+          dev.log('addActivity: invalid args -> $e');
+          throw Exception('Invalid arguments for addActivity');
+        }
 
       case 'markdownWidget':
         final args = call.args;

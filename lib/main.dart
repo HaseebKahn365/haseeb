@@ -4,15 +4,27 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:haseeb/firebase_options.dart';
+import 'package:haseeb/models/activity.dart';
 import 'package:haseeb/providers/chat_provider.dart';
 import 'package:haseeb/providers/theme_provider.dart';
 import 'package:haseeb/screens/agent_chat_screen.dart';
 import 'package:haseeb/screens/home_screen.dart';
 import 'package:haseeb/screens/settings_screen.dart';
+import 'package:hive/hive.dart';
+import 'package:path_provider/path_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Initialize Hive and register adapters for activity models
+  final appDocDir = await getApplicationDocumentsDirectory();
+  Hive.init(appDocDir.path);
+  // Register generated Hive adapters
+  Hive.registerAdapter(ActivityTypeAdapter());
+  Hive.registerAdapter(ActivityAdapter());
+  Hive.registerAdapter(TimeActivityAdapter());
+  Hive.registerAdapter(CountActivityAdapter());
 
   runApp(const ProviderScope(child: MainApp()));
 }

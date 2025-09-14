@@ -38,6 +38,29 @@ final toolsForLLM = [
       },
     ),
     FunctionDeclaration(
+      'currentDateTime',
+      'Returns the current server datetime in ISO 8601 format',
+      parameters: <String, Schema>{
+        'timezone': Schema.string(
+          description:
+              'Optional timezone identifier, e.g., "Asia/Karachi" or "PKT"',
+        ),
+        'format': Schema.string(
+          description: 'Optional format hint, e.g., "iso", "human"',
+        ),
+      },
+    ),
+    FunctionDeclaration(
+      'addActivity',
+      'Create a new activity with specified name and type',
+      parameters: <String, Schema>{
+        'name': Schema.string(description: 'Name of the activity'),
+        'type': Schema.string(
+          description: 'Type of activity: "time" or "count"',
+        ),
+      },
+    ),
+    FunctionDeclaration(
       'renderMarkdown',
       'Render markdown-formatted content inline',
       parameters: <String, Schema>{
