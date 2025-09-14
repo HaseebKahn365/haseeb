@@ -84,10 +84,7 @@ final themeDataProvider = Provider<ThemeData>((ref) {
     displayColor: colorScheme.onSurface,
   );
 
-  return ThemeData(
-    colorScheme: colorScheme,
-    textTheme: themedText,
-  );
+  return ThemeData(colorScheme: colorScheme, textTheme: themedText);
 });
 
 final darkThemeDataProvider = Provider<ThemeData>((ref) {
@@ -102,8 +99,5 @@ final darkThemeDataProvider = Provider<ThemeData>((ref) {
     displayColor: colorScheme.onSurface,
   );
 
-  return ThemeData(
-    colorScheme: colorScheme,
-    textTheme: themedText,
-  );
+  return ThemeData(colorScheme: colorScheme, textTheme: themedText);
 });
