@@ -36,6 +36,7 @@ class RadialBarWidget extends StatelessWidget {
                     widthFactor: 1.0,
                     heightFactor: 1.0,
                     child: CircularProgressIndicator(
+                      year2023: false,
                       value: progress,
                       strokeWidth: 12,
                       backgroundColor: Theme.of(

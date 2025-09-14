@@ -2,6 +2,7 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ThemeState {
@@ -76,21 +77,33 @@ final themeNotifierProvider = StateNotifierProvider<ThemeNotifier, ThemeState>((
 
 final themeDataProvider = Provider<ThemeData>((ref) {
   final state = ref.watch(themeNotifierProvider);
+  final colorScheme = ColorScheme.fromSeed(seedColor: state.seedColor);
+  final baseText = GoogleFonts.rubikTextTheme();
+  final themedText = baseText.apply(
+    bodyColor: colorScheme.onSurface,
+    displayColor: colorScheme.onSurface,
+  );
+
   return ThemeData(
-    colorScheme: ColorScheme.fromSeed(seedColor: state.seedColor),
-    fontFamily: 'Roboto',
-    fontFamilyFallback: ['Arial', 'Helvetica', 'sans-serif'],
+    colorScheme: colorScheme,
+    textTheme: themedText,
   );
 });
 
 final darkThemeDataProvider = Provider<ThemeData>((ref) {
   final state = ref.watch(themeNotifierProvider);
+  final colorScheme = ColorScheme.fromSeed(
+    seedColor: state.seedColor,
+    brightness: Brightness.dark,
+  );
+  final baseText = GoogleFonts.rubikTextTheme();
+  final themedText = baseText.apply(
+    bodyColor: colorScheme.onSurface,
+    displayColor: colorScheme.onSurface,
+  );
+
   return ThemeData(
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: state.seedColor,
-      brightness: Brightness.dark,
-    ),
-    fontFamily: 'Roboto',
-    fontFamilyFallback: ['Arial', 'Helvetica', 'sans-serif'],
+    colorScheme: colorScheme,
+    textTheme: themedText,
   );
 });

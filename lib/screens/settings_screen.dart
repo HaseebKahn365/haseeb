@@ -26,10 +26,7 @@ class SettingsScreen extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Theme mode',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
+          Text('Theme mode', style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Row(
             children: [

@@ -88,10 +88,13 @@ class ActivityCardWidget extends StatelessWidget {
                     ],
                   ),
                 ),
-                SizedBox(
+                Container(
+                  margin: const EdgeInsets.only(right: 6),
+
                   width: 60,
                   height: 60,
                   child: CircularProgressIndicator(
+                    year2023: false,
                     value: progress,
                     strokeWidth: 6,
                     backgroundColor: Theme.of(

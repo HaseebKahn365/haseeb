@@ -8,7 +8,6 @@ import 'package:haseeb/providers/theme_provider.dart';
 import 'package:haseeb/screens/agent_chat_screen.dart';
 import 'package:haseeb/screens/home_screen.dart';
 import 'package:haseeb/screens/settings_screen.dart';
-import 'package:haseeb/screens/widget_preview_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,7 +49,6 @@ class _MainScreenState extends State<MainScreen> {
     const HomeScreen(),
     const AgentChatScreen(),
     const SettingsScreen(),
-    const WidgetPreviewScreen(),
   ];
 
   @override
@@ -148,11 +146,6 @@ class _MainScreenState extends State<MainScreen> {
               icon: Icon(Icons.settings, size: 24),
               label: 'Settings',
               tooltip: 'App Settings',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.widgets, size: 24),
-              label: 'Widgets',
-              tooltip: 'Widget Preview',
             ),
           ],
         ),
