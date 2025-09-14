@@ -115,6 +115,34 @@ final toolsForLLM = [
       },
     ),
     FunctionDeclaration(
+      'analyzeHistoricalData',
+      'Analyze activity records within a specified date range and provide insights',
+      parameters: <String, Schema>{
+        'activityName': Schema.string(
+          description: 'Name of the activity to analyze',
+        ),
+        'timeRange': Schema.string(
+          description:
+              'Time range to analyze: last_7_days, last_30_days, last_3_months, last_year, or custom',
+        ),
+        'customStartDate': Schema.string(
+          description:
+              'Custom start date in format: yyyy-MM-dd HH:mm:ss (required if timeRange is "custom")',
+          nullable: true,
+        ),
+        'customEndDate': Schema.string(
+          description:
+              'Custom end date in format: yyyy-MM-dd HH:mm:ss (required if timeRange is "custom")',
+          nullable: true,
+        ),
+        'days': Schema.number(
+          description:
+              'Optional: number of days back from now to analyze (overrides timeRange when provided)',
+          nullable: true,
+        ),
+      },
+    ),
+    FunctionDeclaration(
       'renderMarkdown',
       'Render markdown-formatted content inline',
       parameters: <String, Schema>{

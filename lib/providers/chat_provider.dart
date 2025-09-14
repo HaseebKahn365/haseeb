@@ -748,6 +748,115 @@ class ChatNotifier extends StateNotifier<ChatState> {
           throw Exception('Unable to check activity progress: $e');
         }
 
+      case 'analyzeHistoricalData':
+        try {
+          final args = call.args as Map<String, dynamic>;
+          final activityName = args['activityName'] as String;
+          final timeRange = args['timeRange'] as String? ?? 'last_7_days';
+          final customStart = args['customStartDate'] as String?;
+          final customEnd = args['customEndDate'] as String?;
+          final daysArg = args['days'];
+
+          final now = DateTime.now();
+          final format = DateFormat('yyyy-MM-dd HH:mm:ss');
+
+          late DateTime startDate;
+          late DateTime endDate;
+
+          // If days numeric argument provided and > 0, prefer it over timeRange
+          if (daysArg != null) {
+            final days = (daysArg is num)
+                ? daysArg.toInt()
+                : int.tryParse(daysArg.toString()) ?? 0;
+            if (days <= 0) {
+              throw Exception(
+                'Invalid days parameter: must be a positive integer',
+              );
+            }
+            startDate = now.subtract(Duration(days: days));
+            endDate = now;
+          } else {
+            switch (timeRange) {
+              case 'last_7_days':
+                startDate = now.subtract(const Duration(days: 7));
+                endDate = now;
+                break;
+              case 'last_30_days':
+                startDate = now.subtract(const Duration(days: 30));
+                endDate = now;
+                break;
+              case 'last_3_months':
+                startDate = DateTime(now.year, now.month - 3, now.day);
+                endDate = now;
+                break;
+              case 'last_year':
+                startDate = DateTime(now.year - 1, now.month, now.day);
+                endDate = now;
+                break;
+              case 'custom':
+                if (customStart == null || customEnd == null) {
+                  throw Exception(
+                    'Custom start and end dates are required for custom time range',
+                  );
+                }
+                startDate = format.parseStrict(customStart);
+                endDate = format.parseStrict(customEnd);
+                break;
+              default:
+                throw Exception('Invalid time range: $timeRange');
+            }
+          }
+
+          final startStr = format.format(startDate);
+          final endStr = format.format(endDate);
+
+          // Open Hive boxes and create ActivityManager
+          final activityBox = await Hive.openBox<models_activity.Activity>(
+            'activities',
+          );
+          final timeBox = await Hive.openBox<models_activity.TimeActivity>(
+            'time_activities',
+          );
+          final countBox = await Hive.openBox<models_activity.CountActivity>(
+            'count_activities',
+          );
+
+          final manager = ActivityManager(
+            activityBox: activityBox,
+            timeActivityBox: timeBox,
+            countActivityBox: countBox,
+          );
+
+          // Find activity
+          final info = manager.findActivityByKeyword(activityName);
+          final activityId = info['id'] as String;
+
+          // Fetch raw data using ActivityManager.fetchBetween
+          final data = manager.fetchBetween(activityId, startStr, endStr);
+
+          // Analyze and generate insights (helpers below)
+          final insights = _generateInsights(data, info, startDate, endDate);
+
+          final result = {
+            'success': true,
+            'activityName': info['name'],
+            'activityType': info['type'],
+            'timeRange': timeRange,
+            'startDate': startStr,
+            'endDate': endStr,
+            'rawData': data,
+            'insights': insights,
+          };
+
+          return jsonEncode(result);
+        } catch (e) {
+          dev.log('analyzeHistoricalData: error -> $e');
+          return jsonEncode({
+            'success': false,
+            'error': 'Failed to analyze historical data: ${e.toString()}',
+          });
+        }
+
       case 'correctLastActivityRecord':
         try {
           final args = call.args as Map<String, dynamic>;
@@ -902,6 +1011,180 @@ class ChatNotifier extends StateNotifier<ChatState> {
     final start = format.parseStrict(startStr);
     final end = format.parseStrict(endStr);
     return end.difference(start).inMinutes;
+  }
+
+  // Analyze fetchBetween raw data and return structured insights
+  Map<String, dynamic> _generateInsights(
+    Map<String, dynamic> data,
+    Map<String, dynamic> activityInfo,
+    DateTime startDate,
+    DateTime endDate,
+  ) {
+    final activityType = activityInfo['type'] as String; // 'time' or 'count'
+    final total = data['total'] as int? ?? 0;
+    final recordCount = data['count'] as int? ?? 0;
+    final csvData = data['csv_data'] as String? ?? '';
+
+    if (recordCount == 0) {
+      return {
+        'hasData': false,
+        'message': 'No records found for the specified time period.',
+      };
+    }
+
+    final lines = csvData.split('\n');
+    final records = lines.skip(1).where((l) => l.trim().isNotEmpty).toList();
+
+    if (activityType == 'time') {
+      return _generateTimeInsights(
+        records,
+        total,
+        recordCount,
+        startDate,
+        endDate,
+      );
+    } else {
+      return _generateCountInsights(
+        records,
+        total,
+        recordCount,
+        startDate,
+        endDate,
+      );
+    }
+  }
+
+  Map<String, dynamic> _generateTimeInsights(
+    List<String> records,
+    int totalMinutes,
+    int recordCount,
+    DateTime startDate,
+    DateTime endDate,
+  ) {
+    final dailyAverages = <String, int>{};
+    final sessionDurations = <int>[];
+    final daysWithData = <String>{};
+
+    for (final record in records) {
+      final parts = record.split(',');
+      if (parts.length >= 4) {
+        final startTime = DateTime.parse(parts[1]);
+        final duration = int.tryParse(parts[3]) ?? 0;
+        final dayKey = DateFormat('yyyy-MM-dd').format(startTime);
+        dailyAverages[dayKey] = (dailyAverages[dayKey] ?? 0) + duration;
+        daysWithData.add(dayKey);
+        sessionDurations.add(duration);
+      }
+    }
+
+    final totalDays = endDate.difference(startDate).inDays + 1;
+    final daysWithRecords = daysWithData.length;
+    final averagePerDay = daysWithRecords > 0
+        ? totalMinutes ~/ daysWithRecords
+        : 0;
+    final averagePerSession = recordCount > 0 ? totalMinutes ~/ recordCount : 0;
+
+    return {
+      'hasData': true,
+      'totalMinutes': totalMinutes,
+      'totalHours': (totalMinutes / 60).toStringAsFixed(1),
+      'recordCount': recordCount,
+      'daysWithRecords': daysWithRecords,
+      'consistencyRate':
+          '${((daysWithRecords / totalDays) * 100).toStringAsFixed(1)}%',
+      'averagePerDay': averagePerDay,
+      'averagePerSession': averagePerSession,
+      'longestSession': sessionDurations.isNotEmpty
+          ? sessionDurations.reduce((a, b) => a > b ? a : b)
+          : 0,
+      'shortestSession': sessionDurations.isNotEmpty
+          ? sessionDurations.reduce((a, b) => a < b ? a : b)
+          : 0,
+      'trend': _calculateTrend(dailyAverages),
+    };
+  }
+
+  Map<String, dynamic> _generateCountInsights(
+    List<String> records,
+    int totalCount,
+    int recordCount,
+    DateTime startDate,
+    DateTime endDate,
+  ) {
+    final dailyTotals = <String, int>{};
+    final dailyCounts = <int>[];
+    final daysWithData = <String>{};
+
+    for (final record in records) {
+      final parts = record.split(',');
+      if (parts.length >= 3) {
+        final timestamp = DateTime.parse(parts[1]);
+        final count = int.tryParse(parts[2]) ?? 0;
+        final dayKey = DateFormat('yyyy-MM-dd').format(timestamp);
+        dailyTotals[dayKey] = (dailyTotals[dayKey] ?? 0) + count;
+        daysWithData.add(dayKey);
+        dailyCounts.add(count);
+      }
+    }
+
+    final totalDays = endDate.difference(startDate).inDays + 1;
+    final daysWithRecords = daysWithData.length;
+    final averagePerDay = daysWithRecords > 0
+        ? totalCount ~/ daysWithRecords
+        : 0;
+    final averagePerRecord = recordCount > 0 ? totalCount ~/ recordCount : 0;
+
+    return {
+      'hasData': true,
+      'totalCount': totalCount,
+      'recordCount': recordCount,
+      'daysWithRecords': daysWithRecords,
+      'consistencyRate':
+          '${((daysWithRecords / totalDays) * 100).toStringAsFixed(1)}%',
+      'averagePerDay': averagePerDay,
+      'averagePerRecord': averagePerRecord,
+      'highestDailyTotal': dailyTotals.values.isNotEmpty
+          ? dailyTotals.values.reduce((a, b) => a > b ? a : b)
+          : 0,
+      'lowestDailyTotal': dailyTotals.values.isNotEmpty
+          ? dailyTotals.values.reduce((a, b) => a < b ? a : b)
+          : 0,
+      'trend': _calculateTrend(dailyTotals),
+    };
+  }
+
+  // Very small trend calculation: slope-like measure comparing first half vs second half
+  Map<String, dynamic> _calculateTrend(Map<String, int> dailyMap) {
+    if (dailyMap.isEmpty) return {'trend': 'stable'};
+    final sortedKeys = dailyMap.keys.toList()..sort();
+    final values = sortedKeys.map((k) => dailyMap[k] ?? 0).toList();
+    final n = values.length;
+    if (n < 2) return {'trend': 'stable'};
+
+    final mid = n ~/ 2;
+    final firstAvg = values.sublist(0, mid).isNotEmpty
+        ? (values.sublist(0, mid).reduce((a, b) => a + b) /
+              (values.sublist(0, mid).length))
+        : 0;
+    final secondAvg = values.sublist(mid).isNotEmpty
+        ? (values.sublist(mid).reduce((a, b) => a + b) /
+              (values.sublist(mid).length))
+        : 0;
+
+    final diff = secondAvg - firstAvg;
+    final pct = firstAvg == 0
+        ? (secondAvg == 0 ? 0.0 : 100.0)
+        : ((diff / firstAvg) * 100.0);
+
+    String trendLabel;
+    if (pct > 10)
+      trendLabel = 'increasing';
+    else if (pct < -10)
+      trendLabel = 'decreasing';
+    else
+      trendLabel = 'stable';
+
+    return {'trend': trendLabel, 'percentChange': pct.toStringAsFixed(1)};
   }
 
   Future<void> _saveMessages() async {
