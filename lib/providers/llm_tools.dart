@@ -195,5 +195,18 @@ final toolsForLLM = [
         ),
       },
     ),
+    FunctionDeclaration(
+      'updateActivity',
+      'Update the name of an existing activity. Uses ActivityManager.updateActivity under the hood',
+      parameters: <String, Schema>{
+        'currentName': Schema.string(
+          description:
+              'The current (or partial) name of the activity to update',
+        ),
+        'newName': Schema.string(
+          description: 'The new name to assign to the activity',
+        ),
+      },
+    ),
   ]),
 ];

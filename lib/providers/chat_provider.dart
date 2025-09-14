@@ -857,6 +857,63 @@ class ChatNotifier extends StateNotifier<ChatState> {
           });
         }
 
+      case 'updateActivity':
+        try {
+          final args = call.args as Map<String, dynamic>;
+          final currentName = (args['currentName'] as String?)?.trim() ?? '';
+          final newName = (args['newName'] as String?)?.trim() ?? '';
+
+          if (currentName.isEmpty || newName.isEmpty) {
+            throw Exception('Both currentName and newName must be provided');
+          }
+
+          // Open Hive boxes and create ActivityManager
+          final activityBox = await Hive.openBox<models_activity.Activity>(
+            'activities',
+          );
+          final timeBox = await Hive.openBox<models_activity.TimeActivity>(
+            'time_activities',
+          );
+          final countBox = await Hive.openBox<models_activity.CountActivity>(
+            'count_activities',
+          );
+          final manager = ActivityManager(
+            activityBox: activityBox,
+            timeActivityBox: timeBox,
+            countActivityBox: countBox,
+          );
+
+          // Find the activity using ActivityManager (reuses existing helper)
+          final activityInfo = manager.findActivityByKeyword(currentName);
+          final activityId = activityInfo['id'] as String;
+          final oldName = activityInfo['name'] as String;
+
+          final updated = manager.updateActivity(activityId, newName);
+
+          if (!updated) {
+            return jsonEncode({
+              'success': false,
+              'message': 'Failed to update activity',
+              'activityId': activityId,
+            });
+          }
+
+          return jsonEncode({
+            'success': true,
+            'activityId': activityId,
+            'oldName': oldName,
+            'newName': newName,
+            'message': 'Activity name updated successfully',
+          });
+        } catch (e) {
+          dev.log('updateActivity: error -> $e');
+          return jsonEncode({
+            'success': false,
+            'error': 'Failed to update activity: ${e.toString()}',
+            'args': call.args,
+          });
+        }
+
       case 'correctLastActivityRecord':
         try {
           final args = call.args as Map<String, dynamic>;
