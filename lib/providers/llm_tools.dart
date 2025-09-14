@@ -3,19 +3,6 @@ import 'package:firebase_ai/firebase_ai.dart';
 final toolsForLLM = [
   Tool.functionDeclarations([
     FunctionDeclaration(
-      'displayHelloWorld',
-      'Displays a simple "Hello, World!" message',
-      parameters: <String, Schema>{},
-    ),
-    FunctionDeclaration(
-      'addTool',
-      'Adds two numbers together and returns the sum',
-      parameters: <String, Schema>{
-        'a': Schema.number(description: 'First number to add'),
-        'b': Schema.number(description: 'Second number to add'),
-      },
-    ),
-    FunctionDeclaration(
       'markdownWidget',
       'Displays a formatted markdown message showing the calculation',
       parameters: <String, Schema>{
