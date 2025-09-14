@@ -914,6 +914,71 @@ class ChatNotifier extends StateNotifier<ChatState> {
           });
         }
 
+      case 'removeActivity':
+        try {
+          final args = call.args as Map<String, dynamic>;
+          final activityName = (args['activityName'] as String?)?.trim() ?? '';
+          final confirm = args['confirm'] as bool? ?? false;
+
+          if (activityName.isEmpty) {
+            throw Exception('activityName is required');
+          }
+
+          // Find and remove only if confirmed
+          if (!confirm) {
+            return jsonEncode({
+              'success': false,
+              'warning': 'Deletion not confirmed. Set confirm=true to delete.',
+              'activityName': activityName,
+            });
+          }
+
+          // Open Hive boxes and create ActivityManager
+          final activityBox = await Hive.openBox<models_activity.Activity>(
+            'activities',
+          );
+          final timeBox = await Hive.openBox<models_activity.TimeActivity>(
+            'time_activities',
+          );
+          final countBox = await Hive.openBox<models_activity.CountActivity>(
+            'count_activities',
+          );
+          final manager = ActivityManager(
+            activityBox: activityBox,
+            timeActivityBox: timeBox,
+            countActivityBox: countBox,
+          );
+
+          // Use existing helper to find activity
+          final activityInfo = manager.findActivityByKeyword(activityName);
+          final activityId = activityInfo['id'] as String;
+          final actualName = activityInfo['name'] as String;
+
+          final removed = manager.removeActivity(activityId);
+
+          if (!removed) {
+            return jsonEncode({
+              'success': false,
+              'message': 'Failed to remove activity',
+              'activityId': activityId,
+            });
+          }
+
+          return jsonEncode({
+            'success': true,
+            'activityId': activityId,
+            'activityName': actualName,
+            'message': 'Activity and its records removed successfully',
+          });
+        } catch (e) {
+          dev.log('removeActivity: error -> $e');
+          return jsonEncode({
+            'success': false,
+            'error': 'Failed to remove activity: ${e.toString()}',
+            'args': call.args,
+          });
+        }
+
       case 'correctLastActivityRecord':
         try {
           final args = call.args as Map<String, dynamic>;

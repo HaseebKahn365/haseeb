@@ -208,5 +208,19 @@ final toolsForLLM = [
         ),
       },
     ),
+    FunctionDeclaration(
+      'removeActivity',
+      'Remove an activity and all its records. Uses ActivityManager.removeActivity',
+      parameters: <String, Schema>{
+        'activityName': Schema.string(
+          description: 'The name or keyword of the activity to remove',
+        ),
+        'confirm': Schema.boolean(
+          description:
+              'Explicit confirmation flag. Must be true to perform deletion. If omitted or false, the function should return a warning message and not delete.',
+          nullable: true,
+        ),
+      },
+    ),
   ]),
 ];
