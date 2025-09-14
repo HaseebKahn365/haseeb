@@ -1423,6 +1423,151 @@ class ChatNotifier extends StateNotifier<ChatState> {
           });
         }
 
+      case 'updateLatestRecord':
+        try {
+          final args = call.args as Map<String, dynamic>;
+          final activityName = (args['activityName'] as String?)?.trim() ?? '';
+          final updates = (args['updates'] as Map<String, dynamic>?) ?? {};
+          final recordId = (args['recordId'] as String?);
+
+          if (activityName.isEmpty) {
+            throw Exception('activityName is required');
+          }
+
+          // Open boxes and manager
+          final activityBox = await Hive.openBox<models_activity.Activity>(
+            'activities',
+          );
+          final timeBox = await Hive.openBox<models_activity.TimeActivity>(
+            'time_activities',
+          );
+          final countBox = await Hive.openBox<models_activity.CountActivity>(
+            'count_activities',
+          );
+          final manager = ActivityManager(
+            activityBox: activityBox,
+            timeActivityBox: timeBox,
+            countActivityBox: countBox,
+          );
+
+          // Resolve activity
+          final activityInfo = manager.findActivityByKeyword(activityName);
+          final activityId = activityInfo['id'] as String;
+          final activityType =
+              activityInfo['type'] as String; // 'time' or 'count'
+          final activityDisplayName = activityInfo['name'] as String;
+
+          bool deleted = false;
+          String deletedRecordId = '';
+
+          if (recordId != null && recordId.isNotEmpty) {
+            // Delete the specific record from the appropriate box
+            if (activityType == 'time') {
+              if (timeBox.containsKey(recordId)) {
+                timeBox.delete(recordId);
+                deleted = true;
+                deletedRecordId = recordId;
+              }
+            } else {
+              if (countBox.containsKey(recordId)) {
+                countBox.delete(recordId);
+                deleted = true;
+                deletedRecordId = recordId;
+              }
+            }
+          } else {
+            // Remove last record using ActivityManager helper
+            deleted = manager.removeLastRecord(activityId);
+          }
+
+          // Add corrected record if updates provided
+          String addedRecordId = '';
+          if (updates.isNotEmpty) {
+            if (activityType == 'time') {
+              final newStart = updates['startStr'] as String?;
+              final newEnd = updates['endStr'] as String?;
+              int? newMinutes;
+              final pm = updates['productiveMinutes'];
+              if (pm is num) newMinutes = pm.toInt();
+              if (pm is String) newMinutes = int.tryParse(pm);
+
+              if (newStart != null && newEnd != null) {
+                newMinutes ??= _calculateMinutesBetween(newStart, newEnd);
+                addedRecordId = manager.addTimeActivityRecord(
+                  parentId: activityId,
+                  startStr: newStart,
+                  expectedEndStr: newEnd,
+                  productiveMinutes: newMinutes,
+                  actualEndStr: newEnd,
+                );
+              }
+            } else {
+              final newTimestamp =
+                  updates['timestampStr'] as String? ??
+                  DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+              int? newCount;
+              final c = updates['count'];
+              if (c is num) newCount = c.toInt();
+              if (c is String) newCount = int.tryParse(c);
+              if (newCount != null) {
+                addedRecordId = manager.addCountActivityRecord(
+                  parentId: activityId,
+                  timestampStr: newTimestamp,
+                  count: newCount,
+                );
+              }
+            }
+          }
+
+          // Build markdown summary
+          final md = StringBuffer();
+          md.writeln('# Record Update');
+          md.writeln();
+          md.writeln('- Activity: **$activityDisplayName**');
+          md.writeln(
+            '- Action: **${deleted ? 'Deleted previous record' : 'No record deleted'}**',
+          );
+          if (deletedRecordId.isNotEmpty)
+            md.writeln('- Deleted Record ID: `$deletedRecordId`');
+          if (addedRecordId.isNotEmpty)
+            md.writeln('- Added (corrected) Record ID: `$addedRecordId`');
+          if (updates.isNotEmpty) {
+            md.writeln();
+            md.writeln('## New Record Details');
+            updates.forEach((k, v) {
+              md.writeln('- **$k**: $v');
+            });
+          }
+          md.writeln();
+          md.writeln(
+            '_If this looks wrong, tell me what to correct and I will update it._',
+          );
+
+          final widgetMessage = ChatMessage(
+            text: '',
+            isUser: false,
+            timestamp: DateTime.now(),
+            widgetType: 'renderMarkdown',
+            widgetData: {'content': md.toString()},
+          );
+          addMessage(widgetMessage);
+
+          return jsonEncode({
+            'success': true,
+            'deleted': deleted,
+            'deletedRecordId': deletedRecordId,
+            'addedRecordId': addedRecordId,
+            'message': 'Record updated and summary rendered',
+          });
+        } catch (e) {
+          dev.log('updateLatestRecord: error -> $e');
+          return jsonEncode({
+            'success': false,
+            'error': 'Failed to update record: ${e.toString()}',
+            'args': call.args,
+          });
+        }
+
       case 'markdownWidget':
         final args = call.args;
         final numberA = args['numberA'];

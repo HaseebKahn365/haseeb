@@ -1,3 +1,4 @@
+import 'package:expressive_loading_indicator/expressive_loading_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -15,6 +16,10 @@ class SettingsScreen extends ConsumerWidget {
     Colors.teal,
     Colors.amber,
     Colors.cyan,
+    Colors.pink,
+    Colors.brown,
+    Colors.indigo,
+    Colors.deepPurple,
   ];
 
   @override
@@ -88,7 +93,65 @@ class SettingsScreen extends ConsumerWidget {
               }).toList(),
             ),
           ),
+
+          AnimatingContainerSatisfaction(),
         ],
+      ),
+    );
+  }
+}
+
+class AnimatingContainerSatisfaction extends StatefulWidget {
+  const AnimatingContainerSatisfaction({super.key});
+
+  @override
+  State<AnimatingContainerSatisfaction> createState() =>
+      _AnimatingContainerSatisfactionState();
+}
+
+class _AnimatingContainerSatisfactionState
+    extends State<AnimatingContainerSatisfaction>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _animation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    )..repeat(reverse: true);
+    _animation = Tween<double>(
+      begin: 150.0,
+      end: 250.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: AnimatedBuilder(
+        animation: _animation,
+        builder: (context, child) {
+          return SizedBox(
+            height: _animation.value,
+            width: _animation.value,
+            child: ExpressiveLoadingIndicator(
+              // Custom color
+              color: Theme.of(context).colorScheme.primary,
+              // Accessibility
+              semanticsLabel: 'Loading',
+              semanticsValue: 'In progress',
+            ),
+          );
+        },
       ),
     );
   }
