@@ -857,6 +857,314 @@ class ChatNotifier extends StateNotifier<ChatState> {
           });
         }
 
+      case 'annualReport':
+        try {
+          final args = call.args as Map<String, dynamic>;
+          final activityNameRaw = args['activityName'] as String?;
+          final yearArg = args['year'];
+
+          final now = DateTime.now();
+          final year = (yearArg == null)
+              ? now.year
+              : ((yearArg is num)
+                    ? yearArg.toInt()
+                    : int.tryParse(yearArg.toString()) ?? now.year);
+
+          // Compute start and end for the year
+          final startDate = DateTime(year, 1, 1);
+          final endDate = DateTime(year, 12, 31, 23, 59, 59);
+          final format = DateFormat('yyyy-MM-dd HH:mm:ss');
+          final startStr = format.format(startDate);
+          final endStr = format.format(endDate);
+
+          // Open Hive boxes and create ActivityManager
+          final activityBox = await Hive.openBox<models_activity.Activity>(
+            'activities',
+          );
+          final timeBox = await Hive.openBox<models_activity.TimeActivity>(
+            'time_activities',
+          );
+          final countBox = await Hive.openBox<models_activity.CountActivity>(
+            'count_activities',
+          );
+          final manager = ActivityManager(
+            activityBox: activityBox,
+            timeActivityBox: timeBox,
+            countActivityBox: countBox,
+          );
+
+          final reports = <Map<String, dynamic>>[];
+
+          // If no activityName provided or 'all', iterate all activities
+          final reportAll =
+              (activityNameRaw == null) ||
+              (activityNameRaw.trim().toLowerCase() == 'all');
+
+          final activitiesToProcess = reportAll
+              ? activityBox.values.toList()
+              : [manager.findActivityByKeyword(activityNameRaw)];
+
+          for (final actEntry in activitiesToProcess) {
+            String activityId;
+            String activityName;
+            String activityType;
+
+            if (reportAll) {
+              final a = actEntry as models_activity.Activity;
+              activityId = a.id;
+              activityName = a.name;
+              activityType = a.type == models_activity.ActivityType.time
+                  ? 'time'
+                  : 'count';
+            } else {
+              final info = actEntry as Map<String, dynamic>;
+              activityId = info['id'] as String;
+              activityName = info['name'] as String;
+              activityType = info['type'] as String;
+            }
+
+            Map<String, dynamic> rawData;
+            Map<String, dynamic> insights;
+
+            if (year == now.year) {
+              try {
+                final detailed = manager.getActivityInfo(activityId);
+                rawData = {'activity_info': detailed};
+                insights = {
+                  'summary': 'Aggregated metrics for $activityName in $year',
+                  'totalRecords': detailed['total_records'] ?? 0,
+                  'totalValue':
+                      detailed['total_minutes'] ?? detailed['total_count'] ?? 0,
+                  'time_periods': detailed['time_periods'],
+                };
+              } catch (e) {
+                rawData = {
+                  'error': 'failed to getActivityInfo: ${e.toString()}',
+                };
+                insights = {'hasData': false, 'error': e.toString()};
+              }
+            } else {
+              try {
+                final data = manager.fetchBetween(activityId, startStr, endStr);
+                rawData = data;
+                insights = _generateInsights(
+                  data,
+                  {
+                    'id': activityId,
+                    'name': activityName,
+                    'type': activityType,
+                  },
+                  startDate,
+                  endDate,
+                );
+              } catch (e) {
+                rawData = {'error': 'failed to fetchBetween: ${e.toString()}'};
+                insights = {'hasData': false, 'error': e.toString()};
+              }
+            }
+
+            reports.add({
+              'activityId': activityId,
+              'activityName': activityName,
+              'activityType': activityType,
+              'year': year,
+              'startDate': startStr,
+              'endDate': endStr,
+              'rawData': rawData,
+              'insights': insights,
+            });
+          }
+
+          return jsonEncode({
+            'success': true,
+            'year': year,
+            'reports': reports,
+          });
+        } catch (e) {
+          dev.log('annualReport: error -> $e');
+          return jsonEncode({
+            'success': false,
+            'error': 'Failed to generate annual report: ${e.toString()}',
+          });
+        }
+
+      case 'displayActivities':
+        try {
+          final args = call.args as Map<String, dynamic>;
+          final activityName = (args['activityName'] as String?)?.trim();
+          final limitArg = args['limit'];
+          final limit = (limitArg is num)
+              ? limitArg.toInt()
+              : (limitArg is String ? int.tryParse(limitArg) : null);
+
+          final activityBox = await Hive.openBox<models_activity.Activity>(
+            'activities',
+          );
+          final timeBox = await Hive.openBox<models_activity.TimeActivity>(
+            'time_activities',
+          );
+          final countBox = await Hive.openBox<models_activity.CountActivity>(
+            'count_activities',
+          );
+          final manager = ActivityManager(
+            activityBox: activityBox,
+            timeActivityBox: timeBox,
+            countActivityBox: countBox,
+          );
+
+          // Select activities
+          List<Map<String, dynamic>> activities = [];
+          if (activityName != null && activityName.isNotEmpty) {
+            try {
+              final info = manager.findActivityByKeyword(activityName);
+              activities.add(info);
+            } catch (e) {
+              // Not found: return friendly markdown
+              final notFound = StringBuffer();
+              notFound.writeln('# Activities');
+              notFound.writeln();
+              notFound.writeln(
+                'No activity matching "$activityName" was found.',
+              );
+              final widgetMessage = ChatMessage(
+                text: '',
+                isUser: false,
+                timestamp: DateTime.now(),
+                widgetType: 'renderMarkdown',
+                widgetData: {'content': notFound.toString()},
+              );
+              addMessage(widgetMessage);
+              return jsonEncode({
+                'rendered': true,
+                'message': 'rendered_markdown',
+              });
+            }
+          } else {
+            activities = activityBox.values
+                .map(
+                  (a) => {
+                    'id': a.id,
+                    'name': a.name,
+                    'type': a.type == models_activity.ActivityType.time
+                        ? 'time'
+                        : 'count',
+                  },
+                )
+                .toList();
+          }
+
+          if (limit != null && limit > 0 && activities.length > limit) {
+            activities = activities.sublist(0, limit);
+          }
+
+          // Build markdown
+          final buffer = StringBuffer();
+          buffer.writeln('# Activities Overview');
+          buffer.writeln();
+          buffer.writeln('A concise, beautiful summary of your activities.');
+          buffer.writeln();
+
+          for (final act in activities) {
+            final id = act['id'] as String;
+            final name = act['name'] as String;
+            final type = act['type'] as String;
+
+            // Use ActivityManager to get aggregated info
+            Map<String, dynamic> info;
+            try {
+              info = manager.getActivityInfo(id);
+            } catch (e) {
+              info = {'error': e.toString()};
+            }
+
+            buffer.writeln('---');
+            buffer.writeln('## $name');
+            buffer.writeln();
+            buffer.writeln('- Type: **${type.toUpperCase()}**');
+
+            if (info.containsKey('error')) {
+              buffer.writeln('- Error fetching details: `${info['error']}`');
+              continue;
+            }
+
+            final totalRecords =
+                info['total_records'] ?? info['total_records'] ?? 0;
+            final totalValue =
+                info['total_minutes'] ?? info['total_count'] ?? 0;
+
+            buffer.writeln('- Total records: **$totalRecords**  ');
+            if (type == 'time') {
+              buffer.writeln(
+                '- Total time: **${(totalValue / 60).toStringAsFixed(1)} hours** ($totalValue minutes)  ',
+              );
+            } else {
+              buffer.writeln('- Total count: **$totalValue**  ');
+            }
+
+            // Time periods map
+            final periods = info['time_periods'] as Map<String, dynamic>?;
+            if (periods != null) {
+              buffer.writeln();
+              buffer.writeln('**This Year Summary**');
+              buffer.writeln();
+              final thisYear = periods['this_year'] as Map<String, dynamic>?;
+              if (thisYear != null) {
+                final periodTotal =
+                    thisYear['total_minutes'] ??
+                    thisYear['total_count'] ??
+                    thisYear['total'];
+                if (periodTotal != null) {
+                  if (type == 'time') {
+                    buffer.writeln(
+                      '- This year: **${(periodTotal / 60).toStringAsFixed(1)} hours** ($periodTotal minutes)  ',
+                    );
+                  } else {
+                    buffer.writeln('- This year: **$periodTotal**  ');
+                  }
+                }
+              }
+
+              // Show small breakdown if available
+              final today = periods['today'] as Map<String, dynamic>?;
+              if (today != null) {
+                final t =
+                    today['total_minutes'] ??
+                    today['total_count'] ??
+                    today['total'];
+                if (t != null) {
+                  buffer.writeln('- Today: **$t**  ');
+                }
+              }
+            }
+
+            // Provide actionable tip
+            buffer.writeln();
+            buffer.writeln(
+              '_Tip:_ You can ask me for an annual report, historical analysis, or to log a new record for this activity.',
+            );
+            buffer.writeln();
+          }
+
+          // Additional footer
+          buffer.writeln('---');
+          buffer.writeln(
+            '_Generated on ${DateFormat('yyyy-MM-dd').format(DateTime.now())}_',
+          );
+
+          final widgetMessage = ChatMessage(
+            text: '',
+            isUser: false,
+            timestamp: DateTime.now(),
+            widgetType: 'renderMarkdown',
+            widgetData: {'content': buffer.toString()},
+          );
+          addMessage(widgetMessage);
+          return jsonEncode({'rendered': true, 'message': 'rendered_markdown'});
+        } catch (e) {
+          dev.log('displayActivities: error -> $e');
+          return 'Failed to render activities: ${e.toString()}';
+        }
+
       case 'updateActivity':
         try {
           final args = call.args as Map<String, dynamic>;

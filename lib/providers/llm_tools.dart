@@ -222,5 +222,36 @@ final toolsForLLM = [
         ),
       },
     ),
+    FunctionDeclaration(
+      'annualReport',
+      'Produce an annual summary for an activity. If year omitted, use current year',
+      parameters: <String, Schema>{
+        'activityName': Schema.string(
+          description:
+              'Name (or keyword) of the activity to summarize. If omitted or "all", report for all activities',
+          nullable: true,
+        ),
+        'year': Schema.number(
+          description: 'Four-digit year for the report, e.g., 2025',
+          nullable: true,
+        ),
+      },
+    ),
+    FunctionDeclaration(
+      'displayActivities',
+      'Return a beautifully formatted markdown overview of activities. If activityName is provided, show details for that activity only. Optional limit to restrict number of activities.',
+      parameters: <String, Schema>{
+        'activityName': Schema.string(
+          description:
+              'Optional activity name or keyword to filter results. If omitted, list all activities.',
+          nullable: true,
+        ),
+        'limit': Schema.number(
+          description:
+              'Optional maximum number of activities to include in the output',
+          nullable: true,
+        ),
+      },
+    ),
   ]),
 ];
