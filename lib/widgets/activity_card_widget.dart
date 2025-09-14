@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:haseeb/models/activity.dart';
 
 class ActivityCardWidget extends StatelessWidget {
   final String title;
   final int total;
   final int done;
   final DateTime timestamp;
-  final String type; // 'COUNT' or 'DURATION'
+  final ActivityType type; // 'COUNT' or 'DURATION'
 
   const ActivityCardWidget({
     super.key,
@@ -13,7 +14,7 @@ class ActivityCardWidget extends StatelessWidget {
     required this.total,
     required this.done,
     required this.timestamp,
-    this.type = 'COUNT',
+    this.type = ActivityType.count,
   });
 
   @override
@@ -70,7 +71,7 @@ class ActivityCardWidget extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        type.toUpperCase() == 'COUNT'
+                        type == ActivityType.count
                             ? 'Repetitions'
                             : 'Duration (min)',
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -79,7 +80,7 @@ class ActivityCardWidget extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '$done / $total ${type.toUpperCase() == 'COUNT' ? '' : 'min'}',
+                        '$done / $total ${type == ActivityType.count ? '' : 'min'}',
                         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                           fontWeight: FontWeight.w500,
                         ),

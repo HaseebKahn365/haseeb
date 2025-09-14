@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:haseeb/models/activity.dart';
 
 import '../widgets/activity_card_widget.dart';
 import '../widgets/export_data_widget.dart';
@@ -23,14 +24,14 @@ class WidgetPreviewScreen extends StatelessWidget {
           total: 60,
           done: 45,
           timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-          type: 'DURATION',
+          type: ActivityType.time,
         ),
         ActivityCardWidget(
           title: 'Pushups',
           total: 100,
           done: 85,
           timestamp: DateTime.now().subtract(const Duration(hours: 1)),
-          type: 'COUNT',
+          type: ActivityType.count,
         ),
 
         _buildSectionHeader(context, 'Markdown Widget'),

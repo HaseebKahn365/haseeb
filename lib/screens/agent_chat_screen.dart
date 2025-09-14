@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:fluttertoast/fluttertoast.dart';
+import 'package:haseeb/models/activity.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../widgets/activity_card_widget.dart';
@@ -598,15 +599,6 @@ class AgentChatScreenState extends State<AgentChatScreen> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _isStreaming
-                  ? null
-                  : () {
-                      _controller.text = 'Start the task';
-                      _sendMessage();
-                    },
-              child: const Text('Start Demo'),
-            ),
           ],
         ),
       ),
@@ -690,7 +682,9 @@ class AgentChatScreenState extends State<AgentChatScreen> {
             } else {
               timestamp = DateTime.now();
             }
-            final typeStr = data['type']?.toString() ?? 'COUNT';
+            final typeStr = (data['type']?.toString().toUpperCase() == 'COUNT')
+                ? ActivityType.count
+                : ActivityType.time;
             return ActivityCardWidget(
               title: title,
               total: total,
