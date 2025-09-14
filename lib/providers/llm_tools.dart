@@ -61,6 +61,47 @@ final toolsForLLM = [
       },
     ),
     FunctionDeclaration(
+      'logDailyActivities',
+      'Log multiple daily activities including count-based and time-based activities in a single call',
+      parameters: <String, Schema>{
+        'countActivities': Schema.array(
+          description: 'List of count-based activities to log',
+          items: Schema.object(
+            properties: {
+              'activityName': Schema.string(
+                description: 'Name of the count activity',
+              ),
+              'count': Schema.number(description: 'Count value'),
+              'timestampStr': Schema.string(
+                description: 'Timestamp in format: yyyy-MM-dd HH:mm:ss',
+                nullable: true,
+              ),
+            },
+          ),
+        ),
+        'timeActivities': Schema.array(
+          description: 'List of time-based activities to log',
+          items: Schema.object(
+            properties: {
+              'activityName': Schema.string(
+                description: 'Name of the time activity',
+              ),
+              'startStr': Schema.string(
+                description: 'Start time in format: yyyy-MM-dd HH:mm:ss',
+              ),
+              'endStr': Schema.string(
+                description: 'End time in format: yyyy-MM-dd HH:mm:ss',
+              ),
+              'productiveMinutes': Schema.number(
+                description: 'Productive minutes spent',
+                nullable: true,
+              ),
+            },
+          ),
+        ),
+      },
+    ),
+    FunctionDeclaration(
       'renderMarkdown',
       'Render markdown-formatted content inline',
       parameters: <String, Schema>{

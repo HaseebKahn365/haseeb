@@ -395,6 +395,36 @@ class ChatNotifier extends StateNotifier<ChatState> {
               : models_activity.ActivityType.count;
 
           final id = DateTime.now().millisecondsSinceEpoch.toString();
+          final timestamp = DateTime.now().toUtc().toIso8601String();
+          final activityName = name.isEmpty ? 'New Activity' : name;
+
+          // Prepare the structured response we'll return to the LLM
+          Map<String, dynamic> buildResult({required bool persisted}) {
+            final result = {
+              'id': id,
+              'name': activityName,
+              'type': typeStr,
+              'timestamp': timestamp,
+              'persisted': persisted,
+            };
+
+            // Also include a markdown message the agent can display directly
+            final markdown = StringBuffer();
+            markdown.writeln('### Activity created');
+            markdown.writeln('');
+            markdown.writeln('- **ID:** `$id`');
+            markdown.writeln('- **Title:** $activityName');
+            markdown.writeln('- **Type:** ${typeStr.toUpperCase()}');
+            markdown.writeln('- **Created at (UTC):** $timestamp');
+            if (!persisted) {
+              markdown.writeln('');
+              markdown.writeln(
+                '__Note:__ Activity saved to a temporary fallback (preferences). It will be migrated to the app database on next startup.',
+              );
+            }
+
+            return {'result': result, 'message_markdown': markdown.toString()};
+          }
 
           // Try to persist via Hive/ActivityManager if boxes are available
           try {
@@ -415,16 +445,39 @@ class ChatNotifier extends StateNotifier<ChatState> {
               countActivityBox: countBox,
             );
 
-            manager.addActivity(name.isEmpty ? 'New Activity' : name, type);
+            manager.addActivity(activityName, type);
             dev.log(
-              'addActivity: persisted activity id=$id name=$name type=$typeStr',
+              'addActivity: persisted activity id=$id name=$activityName type=$typeStr',
             );
-            return id;
+
+            final wrapped = buildResult(persisted: true);
+            return jsonEncode(wrapped);
           } catch (e) {
             dev.log(
-              'addActivity: could not persist activity, returning id only -> $e',
+              'addActivity: could not persist activity, returning fallback -> $e',
             );
-            return id;
+
+            // Fallback: save to SharedPreferences list under 'agent_added_activities'
+            try {
+              final prefs = await SharedPreferences.getInstance();
+              final list = prefs.getStringList('agent_added_activities') ?? [];
+              final entry = jsonEncode({
+                'id': id,
+                'name': activityName,
+                'type': typeStr,
+                'timestamp': timestamp,
+              });
+              list.add(entry);
+              await prefs.setStringList('agent_added_activities', list);
+              dev.log(
+                'addActivity: saved to SharedPreferences fallback, id=$id',
+              );
+            } catch (spErr) {
+              dev.log('addActivity: failed to save fallback -> $spErr');
+            }
+
+            final wrapped = buildResult(persisted: false);
+            return jsonEncode(wrapped);
           }
         } catch (e) {
           dev.log('addActivity: invalid args -> $e');
