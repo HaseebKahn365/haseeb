@@ -1,56 +1,25 @@
-import 'dart:async';
-import 'dart:convert';
 import 'dart:developer' as dev;
 
-import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:fluttertoast/fluttertoast.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:haseeb/models/activity.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:haseeb/providers/chat_provider.dart';
 
 import '../widgets/activity_card_widget.dart';
 import '../widgets/export_data_widget.dart';
 import '../widgets/radial_bar_widget.dart';
 
-class AgentChatScreen extends StatefulWidget {
+class AgentChatScreen extends ConsumerStatefulWidget {
   const AgentChatScreen({super.key});
 
   @override
-  State<AgentChatScreen> createState() => AgentChatScreenState();
+  ConsumerState<AgentChatScreen> createState() => _AgentChatScreenState();
 }
 
 double _scrollPosition = 0;
 
-class AgentChatScreenState extends State<AgentChatScreen> {
-  // Static variables to preserve across page switches
-  static FirebaseAI? _firebaseAI;
-  static GenerativeModel? _model;
-  static ChatSession? _chatSession;
-  static final List<ChatMessage> _messages = [];
-  static String? _systemPrompt;
-  static bool _messagesLoaded = false;
-  static bool _initialized = false;
-  //call back for clearing chat
-  static void clearChat() {
-    _messages.clear();
-    _messagesLoaded = false;
-    _initialized = false;
-    _scrollPosition = 0;
-    deleteFromSharedPreferences();
-  }
-
-  static Future<void> deleteFromSharedPreferences() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('agent_chat_messages');
-      dev.log('deleteFromSharedPreferences: cleared persisted messages');
-    } catch (e) {
-      dev.log('deleteFromSharedPreferences: error clearing messages -> $e');
-    }
-  }
-
+class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController(
     initialScrollOffset: _scrollPosition,
@@ -58,197 +27,18 @@ class AgentChatScreenState extends State<AgentChatScreen> {
       _scrollPosition = position.pixels;
     },
   );
-  bool _isStreaming = false;
-  StreamSubscription<GenerateContentResponse>? _streamSubscription;
 
   @override
   void initState() {
     super.initState();
-    _initializeAsync();
-  }
-
-  Future<void> _initializeAsync() async {
-    if (_initialized) {
-      dev.log('Already initialized, skipping');
-      return;
-    }
-
-    dev.log('initState: initializing Firebase AI generative model');
-    _systemPrompt = await rootBundle.loadString('assets/system_prompt.md');
-    _firebaseAI = FirebaseAI.googleAI();
-    dev.log('initState: FirebaseAI.googleAI() returned');
-    _model = _firebaseAI!.generativeModel(
-      systemInstruction: Content.system(_systemPrompt!),
-      model: 'gemini-2.5-flash',
-
-      tools: [
-        Tool.functionDeclarations([
-          // Existing tools: displayHelloWorld, addTool, markdownWidget
-          FunctionDeclaration(
-            'displayHelloWorld',
-            'Displays a simple "Hello, World!" message',
-            parameters: <String, Schema>{},
-          ),
-
-          FunctionDeclaration(
-            'addTool',
-            'Adds two numbers together and returns the sum',
-            parameters: <String, Schema>{
-              'a': Schema.number(description: 'First number to add'),
-              'b': Schema.number(description: 'Second number to add'),
-            },
-          ),
-
-          FunctionDeclaration(
-            'markdownWidget',
-            'Displays a formatted markdown message showing the calculation',
-            parameters: <String, Schema>{
-              'numberA': Schema.number(
-                description: 'First number in the calculation',
-              ),
-              'numberB': Schema.number(
-                description: 'Second number in the calculation',
-              ),
-              'result': Schema.number(
-                description: 'The result of the calculation',
-              ),
-            },
-          ),
-
-          // NEW UI widget tools for rendering in-chat widgets
-          FunctionDeclaration(
-            'renderRadialBar',
-            'Render a radial progress bar widget (total, done, title)',
-            parameters: <String, Schema>{
-              'total': Schema.number(description: 'Total target value'),
-              'done': Schema.number(description: 'Completed value'),
-              'title': Schema.string(
-                description: 'Title to show on the radial bar',
-              ),
-            },
-          ),
-
-          FunctionDeclaration(
-            'renderActivityCard',
-            'Render an activity summary card (title, total, done, timestamp, type)',
-            parameters: <String, Schema>{
-              'title': Schema.string(description: 'Activity title'),
-              'total': Schema.number(description: 'Total target'),
-              'done': Schema.number(description: 'Completed value'),
-              'timestamp': Schema.string(
-                description: 'ISO 8601 timestamp or epoch millis',
-              ),
-              'type': Schema.string(description: "'COUNT' or 'DURATION'"),
-            },
-          ),
-
-          FunctionDeclaration(
-            'renderMarkdown',
-            'Render markdown-formatted content inline',
-            parameters: <String, Schema>{
-              'content': Schema.string(
-                description: 'Markdown content to render',
-              ),
-            },
-          ),
-
-          FunctionDeclaration(
-            'initiateDataExport',
-            'Render an export-data widget (CSV data + filename)',
-            parameters: <String, Schema>{
-              'data': Schema.string(description: 'CSV formatted data'),
-              'filename': Schema.string(
-                description: 'Filename to use for export',
-              ),
-            },
-          ),
-        ]),
-      ],
-    );
-    dev.log('initState: generative model configured with tools');
-
-    // Load persisted messages so chat state is preserved across screen switches
-    await _loadMessages();
-
-    // Build history for chat session
-    final history = <Content>[];
-    for (final message in _messages) {
-      if (message.isUser) {
-        history.add(Content.text(message.text));
-      } else {
-        history.add(Content.text(message.text));
-      }
-    }
-
-    // Initialize chat session with conversation history
-    _chatSession = _model!.startChat(history: history);
-    dev.log(
-      'initState: chat session initialized with ${_messages.length} messages',
-    );
-
-    _initialized = true;
+    // The provider will initialize automatically
   }
 
   @override
   void dispose() {
     _controller.dispose();
     _scrollController.dispose();
-    _streamSubscription?.cancel();
     super.dispose();
-  }
-
-  void _addMessage(ChatMessage message) {
-    setState(() {
-      _messages.add(message);
-    });
-    dev.log('_addMessage: saving messages count=${_messages.length}');
-    _saveMessages();
-    _scrollToBottom();
-  }
-
-  void _updateLastMessage(String text) {
-    if (_messages.isNotEmpty && !_messages.last.isUser) {
-      setState(() {
-        _messages.last = _messages.last.copyWith(
-          text: _messages.last.text + text,
-        );
-      });
-      dev.log('_updateLastMessage: saving messages');
-      _saveMessages();
-    }
-  }
-
-  Future<void> _saveMessages() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final list = _messages.map((m) => jsonEncode(m.toJson())).toList();
-      await prefs.setStringList('agent_chat_messages', list);
-      dev.log('_saveMessages: persisted ${list.length} messages');
-    } catch (e) {
-      dev.log('_saveMessages: error saving messages -> $e');
-    }
-  }
-
-  Future<void> _loadMessages() async {
-    if (_messagesLoaded) return;
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final list = prefs.getStringList('agent_chat_messages') ?? [];
-      final messages = list.map((s) {
-        final map = jsonDecode(s) as Map<String, dynamic>;
-        return ChatMessage.fromJson(map);
-      }).toList();
-      if (messages.isNotEmpty) {
-        _messages.clear();
-        _messages.addAll(messages);
-        dev.log('_loadMessages: restored ${messages.length} messages');
-      } else {
-        dev.log('_loadMessages: no messages to restore');
-      }
-      _messagesLoaded = true;
-    } catch (e) {
-      dev.log('_loadMessages: error loading messages -> $e');
-    }
   }
 
   void _scrollToBottom() {
@@ -265,311 +55,34 @@ class AgentChatScreenState extends State<AgentChatScreen> {
 
   Future<void> _sendMessage() async {
     final text = _controller.text.trim();
-    if (text.isEmpty || _isStreaming) return;
+    if (text.isEmpty) return;
 
-    dev.log('sendMessage: user input -> $text');
-    // Add user message
-    _addMessage(
-      ChatMessage(text: text, isUser: true, timestamp: DateTime.now()),
-    );
+    final chatNotifier = ref.read(chatNotifierProvider.notifier);
+    await chatNotifier.sendMessage(text);
     _controller.clear();
-
-    setState(() {
-      _isStreaming = true;
-    });
-
-    // Add empty AI message that will be updated in real-time
-    _addMessage(
-      ChatMessage(text: '', isUser: false, timestamp: DateTime.now()),
-    );
-
-    try {
-      // Use the persistent chat session for conversation history
-      dev.log('sendMessage: using persistent chat session');
-      final content = Content.text(text);
-      dev.log('sendMessage: created content -> ${content.toString()}');
-
-      // Listen to the stream
-      _streamSubscription = _chatSession!
-          .sendMessageStream(content)
-          .listen(
-            (GenerateContentResponse response) {
-              dev.log(
-                'stream: received response -> text length=${response.text?.length ?? 0} functionCalls=${response.functionCalls.length}',
-              );
-              // Handle streaming text
-              if (response.text != null && response.text!.isNotEmpty) {
-                dev.log('stream: appending text chunk -> ${response.text}');
-                _updateLastMessage(response.text!);
-              }
-
-              // Handle function calls
-              if (response.functionCalls.isNotEmpty) {
-                for (final call in response.functionCalls) {
-                  dev.log(
-                    'stream: function call received -> ${call.name} args=${call.args}',
-                  );
-                  _handleFunctionCall(_chatSession!, call);
-                }
-              }
-            },
-            onDone: () {
-              dev.log('stream: onDone');
-              setState(() {
-                _isStreaming = false;
-              });
-
-              _streamSubscription?.cancel();
-            },
-            onError: (error) {
-              dev.log('stream: onError -> $error');
-              // Only show error if it's not a connection issue that we can retry
-              if (!error.toString().contains('Connection closed')) {
-                _addMessage(
-                  ChatMessage(
-                    text: 'Error: $error',
-                    isUser: false,
-                    timestamp: DateTime.now(),
-                  ),
-                );
-              }
-              setState(() {
-                _isStreaming = false;
-              });
-            },
-          );
-    } catch (e) {
-      dev.log('sendMessage: exception starting chat -> $e');
-      _addMessage(
-        ChatMessage(
-          text: 'Error starting conversation: $e',
-          isUser: false,
-          timestamp: DateTime.now(),
-        ),
-      );
-      setState(() {
-        _isStreaming = false;
-      });
-    }
-  }
-
-  Future<void> _handleFunctionCall(ChatSession chat, FunctionCall call) async {
-    try {
-      dev.log(
-        'handleFunctionCall: executing ${call.name} with args=${call.args}',
-      );
-
-      // If the function call corresponds to a widget render, create a widget message
-      final widgetTools = {
-        'renderRadialBar',
-        'renderActivityCard',
-        'renderMarkdown',
-        'initiateDataExport',
-      };
-
-      if (widgetTools.contains(call.name)) {
-        dev.log('handleFunctionCall: mapping ${call.name} to widget message');
-
-        // Normalize args (call.args is non-nullable from the SDK)
-        final args = Map<String, dynamic>.from(call.args);
-
-        // Add a widget message to the chat history
-        final widgetMessage = ChatMessage(
-          text: '',
-          isUser: false,
-          timestamp: DateTime.now(),
-          widgetType: call.name,
-          widgetData: args,
-        );
-        _addMessage(widgetMessage);
-
-        // Create function response confirming rendering
-        final functionResponse = Content.functionResponse(call.name, {
-          'status': 'rendered',
-        });
-
-        dev.log(
-          'handleFunctionCall: sending function response confirmation for ${call.name}',
-        );
-        _streamSubscription?.cancel();
-
-        // Add a small delay to ensure the previous stream is properly closed
-        await Future.delayed(const Duration(milliseconds: 100));
-
-        // Continue the stream with the confirmation
-        _streamSubscription = chat
-            .sendMessageStream(functionResponse)
-            .listen(
-              (GenerateContentResponse response) {
-                dev.log(
-                  'post-function stream: received response -> text length=${response.text?.length ?? 0} functionCalls=${response.functionCalls.length}',
-                );
-                if (response.text != null && response.text!.isNotEmpty) {
-                  _updateLastMessage(response.text!);
-                }
-
-                if (response.functionCalls.isNotEmpty) {
-                  for (final newCall in response.functionCalls) {
-                    _handleFunctionCall(chat, newCall);
-                  }
-                }
-              },
-              onDone: () {
-                dev.log('post-function stream: onDone');
-                setState(() {
-                  _isStreaming = false;
-                });
-                //show a small toast
-                Fluttertoast.showToast(
-                  msg: "Done Responding",
-                  toastLength: Toast.LENGTH_SHORT,
-                  gravity: ToastGravity.TOP,
-                  timeInSecForIosWeb: 1,
-                  backgroundColor: Theme.of(
-                    context,
-                  ).colorScheme.primaryContainer,
-                  textColor: Theme.of(context).colorScheme.onPrimaryContainer,
-                  fontSize: 16.0,
-                );
-
-                _streamSubscription?.cancel();
-              },
-              onError: (error) {
-                dev.log('post-function stream: onError -> $error');
-                // Only show error if it's not a connection issue that we can retry
-                if (!error.toString().contains('Connection closed')) {
-                  _addMessage(
-                    ChatMessage(
-                      text: 'Error in function response: $error',
-                      isUser: false,
-                      timestamp: DateTime.now(),
-                    ),
-                  );
-                }
-                setState(() {
-                  _isStreaming = false;
-                });
-              },
-            );
-
-        return;
-      }
-
-      // Fallback: execute function locally and send the result back
-      dev.log('handleFunctionCall: executing local function ${call.name}');
-      final result = await _executeFunction(call);
-      dev.log('handleFunctionCall: result from ${call.name} -> $result');
-
-      final functionResponse = Content.functionResponse(call.name, {
-        'result': result,
-      });
-
-      dev.log(
-        'handleFunctionCall: created function response for ${call.name} with data: ${functionResponse.toJson()}',
-      );
-      _streamSubscription?.cancel();
-
-      // Add a small delay to ensure the previous stream is properly closed
-      await Future.delayed(const Duration(milliseconds: 100));
-
-      _streamSubscription = chat
-          .sendMessageStream(functionResponse)
-          .listen(
-            (GenerateContentResponse response) {
-              dev.log(
-                'post-function stream: received response -> text length=${response.text?.length ?? 0} functionCalls=${response.functionCalls.length}',
-              );
-              if (response.text != null && response.text!.isNotEmpty) {
-                _updateLastMessage(response.text!);
-              }
-
-              if (response.functionCalls.isNotEmpty) {
-                for (final newCall in response.functionCalls) {
-                  _handleFunctionCall(chat, newCall);
-                }
-              }
-            },
-            onDone: () {
-              dev.log('post-function stream: onDone');
-              setState(() {
-                _isStreaming = false;
-              });
-              _streamSubscription?.cancel();
-            },
-            onError: (error) {
-              dev.log('post-function stream: onError -> $error');
-              // Only show error if it's not a connection issue that we can retry
-              if (!error.toString().contains('Connection closed')) {
-                _addMessage(
-                  ChatMessage(
-                    text: 'Error in function response: $error',
-                    isUser: false,
-                    timestamp: DateTime.now(),
-                  ),
-                );
-              }
-              setState(() {
-                _isStreaming = false;
-              });
-            },
-          );
-    } catch (e) {
-      dev.log('handleFunctionCall: exception executing ${call.name} -> $e');
-      _addMessage(
-        ChatMessage(
-          text: 'Error executing function ${call.name}: $e',
-          isUser: false,
-          timestamp: DateTime.now(),
-        ),
-      );
-      setState(() {
-        _isStreaming = false;
-      });
-    }
-  }
-
-  Future<dynamic> _executeFunction(FunctionCall call) async {
-    dev.log('_executeFunction: ${call.name} args=${call.args}');
-    switch (call.name) {
-      case 'displayHelloWorld':
-        // Simulate some processing time
-        dev.log('_executeFunction: displayHelloWorld returning');
-        return 'Hello, World!';
-
-      case 'addTool':
-        final args = call.args;
-        final a = (args['a'] as num).toDouble();
-        final b = (args['b'] as num).toDouble();
-        // Simulate processing time
-        dev.log('_executeFunction: addTool computed $a + $b = ${a + b}');
-        return a + b;
-
-      case 'markdownWidget':
-        final args = call.args;
-        final numberA = args['numberA'];
-        final numberB = args['numberB'];
-        final result = args['result'];
-        // Return formatted markdown
-        dev.log('_executeFunction: markdownWidget formatting result');
-        return '**Calculation Result:**\n\n- First number: $numberA\n- Second number: $numberB\n- **Sum: $result**';
-
-      default:
-        dev.log('_executeFunction: unknown function ${call.name}');
-        throw Exception('Unknown function: ${call.name}');
-    }
+    _scrollToBottom();
   }
 
   @override
   Widget build(BuildContext context) {
+    final chatState = ref.watch(chatNotifierProvider);
+
+    // Auto-scroll when new messages are added
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (chatState.messages.isNotEmpty) {
+        _scrollToBottom();
+      }
+    });
+
     return Scaffold(
       body: Column(
         children: [
           Expanded(
-            child: _messages.isEmpty
+            child: chatState.messages.isEmpty
                 ? _buildWelcomeMessage()
-                : _buildMessagesList(),
+                : _buildMessagesList(chatState.messages),
           ),
-          _buildInputArea(),
+          _buildInputArea(chatState.isStreaming),
         ],
       ),
     );
@@ -605,14 +118,13 @@ class AgentChatScreenState extends State<AgentChatScreen> {
     );
   }
 
-  Widget _buildMessagesList() {
+  Widget _buildMessagesList(List<ChatMessage> messages) {
     return ListView.builder(
       controller: _scrollController,
-
       padding: const EdgeInsets.all(16),
-      itemCount: _messages.length,
+      itemCount: messages.length,
       itemBuilder: (context, index) {
-        return _buildMessageBubble(_messages[index]);
+        return _buildMessageBubble(messages[index]);
       },
     );
   }
@@ -741,7 +253,7 @@ class AgentChatScreenState extends State<AgentChatScreen> {
     );
   }
 
-  Widget _buildInputArea() {
+  Widget _buildInputArea(bool isStreaming) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -772,68 +284,11 @@ class AgentChatScreenState extends State<AgentChatScreen> {
           ),
           const SizedBox(width: 8),
           FloatingActionButton(
-            onPressed: _isStreaming ? null : _sendMessage,
+            onPressed: isStreaming ? null : _sendMessage,
             child: const Icon(Icons.send),
           ),
         ],
       ),
-    );
-  }
-}
-
-class ChatMessage {
-  final String text;
-  final bool isUser;
-  final DateTime timestamp;
-  final String? widgetType; // e.g. renderRadialBar, renderActivityCard
-  final Map<String, dynamic>? widgetData;
-
-  ChatMessage({
-    required this.text,
-    required this.isUser,
-    required this.timestamp,
-    this.widgetType,
-    this.widgetData,
-  });
-
-  ChatMessage copyWith({
-    String? text,
-    bool? isUser,
-    DateTime? timestamp,
-    String? widgetType,
-    Map<String, dynamic>? widgetData,
-  }) {
-    return ChatMessage(
-      text: text ?? this.text,
-      isUser: isUser ?? this.isUser,
-      timestamp: timestamp ?? this.timestamp,
-      widgetType: widgetType ?? this.widgetType,
-      widgetData: widgetData ?? this.widgetData,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'text': text,
-      'isUser': isUser,
-      'timestamp': timestamp.toIso8601String(),
-      'widgetType': widgetType,
-      'widgetData': widgetData,
-    };
-  }
-
-  factory ChatMessage.fromJson(Map<String, dynamic> json) {
-    final widgetData = json['widgetData'];
-    return ChatMessage(
-      text: json['text'] as String? ?? '',
-      isUser: json['isUser'] as bool? ?? false,
-      timestamp: DateTime.parse(
-        json['timestamp'] as String? ?? DateTime.now().toIso8601String(),
-      ),
-      widgetType: json['widgetType'] as String?,
-      widgetData: widgetData is Map
-          ? Map<String, dynamic>.from(widgetData)
-          : null,
     );
   }
 }

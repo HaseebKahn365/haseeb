@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:haseeb/firebase_options.dart';
+import 'package:haseeb/providers/chat_provider.dart';
 import 'package:haseeb/providers/theme_provider.dart';
 import 'package:haseeb/screens/agent_chat_screen.dart';
 import 'package:haseeb/screens/home_screen.dart';
@@ -35,14 +36,14 @@ class MainApp extends ConsumerWidget {
   }
 }
 
-class MainScreen extends StatefulWidget {
+class MainScreen extends ConsumerStatefulWidget {
   const MainScreen({super.key});
 
   @override
-  State<MainScreen> createState() => _MainScreenState();
+  ConsumerState<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends ConsumerState<MainScreen> {
   int _currentIndex = 0;
 
   final List<Widget> _screens = [
@@ -79,9 +80,9 @@ class _MainScreenState extends State<MainScreen> {
                       ),
                       ElevatedButton(
                         onPressed: () {
-                          // Notify the AgentChatScreen to clear chat history
+                          // Clear chat history via provider
                           developer.log('Clearing chat history');
-                          AgentChatScreenState.clearChat();
+                          ref.read(chatNotifierProvider.notifier).clearChat();
                           Navigator.of(context).pop();
                         },
                         child: const Text('Clear'),
