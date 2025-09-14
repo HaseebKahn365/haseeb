@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:haseeb/models/activity.dart';
+import 'package:haseeb/repository/activity_manager.dart';
 import 'package:haseeb/widgets/activity_card_widget.dart';
 import 'package:haseeb/widgets/radial_bar_widget.dart';
+import 'package:hive/hive.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -11,57 +14,161 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  // Simple in-memory demo activities. In your app these come from Hive/ActivityManager.
-  final List<_ActivityItem> _activities = [
-    _ActivityItem(
-      id: 'a1',
-      name: 'Pushups',
-      pinned: false,
-      total: 100,
-      done: 30,
-      timestamp: DateTime.now().subtract(const Duration(hours: 2)),
-      type: ActivityType.count,
-    ),
-    _ActivityItem(
-      id: 'a2',
-      name: 'Running',
-      pinned: true,
-      total: 60,
-      done: 20,
-      timestamp: DateTime.now().subtract(const Duration(days: 1)),
-      type: ActivityType.time,
-    ),
-    _ActivityItem(
-      id: 'a3',
-      name: 'Meditation',
-      pinned: false,
-      total: 30,
-      done: 10,
-      timestamp: DateTime.now().subtract(const Duration(hours: 5)),
-      type: ActivityType.time,
-    ),
-    _ActivityItem(
-      id: 'a4',
-      name: 'Study',
-      pinned: true,
-      total: 120,
-      done: 60,
-      timestamp: DateTime.now().subtract(const Duration(days: 2)),
-      type: ActivityType.time,
-    ),
-  ];
+  // Activities loaded for today's timeframe
+  final List<_ActivityItem> _activities = [];
 
-  double get _completionPercent {
-    // demo: percent of pinned activities relative to total
-    if (_activities.isEmpty) return 0.0;
-    final pinned = _activities.where((a) => a.pinned).length;
-    return pinned / _activities.length;
+  // Persisted pinned ids
+  final Set<String> _pinnedIds = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPinnedIds().then((_) => _loadTodayActivities());
+  }
+
+  Future<void> _loadPinnedIds() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList('pinned_activity_ids') ?? [];
+      _pinnedIds.clear();
+      _pinnedIds.addAll(list);
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  Future<void> _savePinnedIds() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList('pinned_activity_ids', _pinnedIds.toList());
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  Future<void> _loadTodayActivities() async {
+    final activityBox = await Hive.openBox<Activity>('activities');
+    final timeBox = await Hive.openBox<TimeActivity>('time_activities');
+    final countBox = await Hive.openBox<CountActivity>('count_activities');
+    final manager = ActivityManager(
+      activityBox: activityBox,
+      timeActivityBox: timeBox,
+      countActivityBox: countBox,
+    );
+
+    final todayStart = DateTime(
+      DateTime.now().year,
+      DateTime.now().month,
+      DateTime.now().day,
+    );
+    final todayEnd = DateTime.now();
+
+    final List<_ActivityItem> items = [];
+
+    for (final activity in activityBox.values) {
+      bool hasTodayRecord = false;
+      DateTime latestTimestamp = DateTime.now();
+      int done = 0;
+      int total = 0;
+
+      if (activity.type == ActivityType.time) {
+        final records = timeBox.values
+            .where((r) => r.parentId == activity.id)
+            .toList();
+        // Check if any record's start/expectedEnd/actualEnd falls within today
+        for (final r in records) {
+          final start = r.start;
+          final expected = r.expectedEnd;
+          final actual = r.actualEnd;
+          if ((start.isAfter(todayStart) && start.isBefore(todayEnd)) ||
+              (expected.isAfter(todayStart) && expected.isBefore(todayEnd)) ||
+              (actual != null &&
+                  actual.isAfter(todayStart) &&
+                  actual.isBefore(todayEnd))) {
+            hasTodayRecord = true;
+          }
+          if (r.start.isAfter(latestTimestamp)) latestTimestamp = r.start;
+        }
+
+        if (hasTodayRecord) {
+          final info = manager.getActivityInfo(activity.id);
+          done = (info['time_periods']?['today']?['minutes'] as int?) ?? 0;
+          total = (info['total_minutes'] as int?) ?? done;
+          items.add(
+            _ActivityItem(
+              id: activity.id,
+              name: activity.name,
+              pinned: _pinnedIds.contains(activity.id),
+              total: total,
+              done: done,
+              timestamp: latestTimestamp,
+              type: ActivityType.time,
+            ),
+          );
+        }
+      } else {
+        final records = countBox.values
+            .where((r) => r.parentId == activity.id)
+            .toList();
+        for (final r in records) {
+          final ts = r.timestamp;
+          if (ts.isAfter(todayStart) && ts.isBefore(todayEnd)) {
+            hasTodayRecord = true;
+          }
+          if (r.timestamp.isAfter(latestTimestamp))
+            latestTimestamp = r.timestamp;
+        }
+
+        if (hasTodayRecord) {
+          final info = manager.getActivityInfo(activity.id);
+          done = (info['time_periods']?['today']?['count'] as int?) ?? 0;
+          total = (info['total_count'] as int?) ?? done;
+          items.add(
+            _ActivityItem(
+              id: activity.id,
+              name: activity.name,
+              pinned: _pinnedIds.contains(activity.id),
+              total: total,
+              done: done,
+              timestamp: latestTimestamp,
+              type: ActivityType.count,
+            ),
+          );
+        }
+      }
+    }
+
+    setState(() {
+      _activities
+        ..clear()
+        ..addAll(items);
+    });
+  }
+
+  // Generic aggregates (kept for potential future use) removed to avoid confusion.
+
+  // Sum totals but only for time-based activities (minutes).
+  int get _sumTotalMinutes {
+    return _activities.fold(
+      0,
+      (s, a) => s + ((a.type == ActivityType.time) ? a.total : 0),
+    );
+  }
+
+  // Sum done minutes but only for time-based activities (exclude count activities).
+  int get _sumDoneMinutes {
+    return _activities.fold(
+      0,
+      (s, a) => s + ((a.type == ActivityType.time) ? a.done : 0),
+    );
   }
 
   void _pin(String id) {
     setState(() {
       final idx = _activities.indexWhere((a) => a.id == id);
       if (idx != -1) _activities[idx] = _activities[idx].copyWith(pinned: true);
+      _pinnedIds.add(id);
+      _savePinnedIds();
     });
   }
 
@@ -70,6 +177,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final idx = _activities.indexWhere((a) => a.id == id);
       if (idx != -1)
         _activities[idx] = _activities[idx].copyWith(pinned: false);
+      _pinnedIds.remove(id);
+      _savePinnedIds();
     });
   }
 
@@ -103,7 +212,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           children: [
                             RadialBarWidget(
                               total: 1440,
-                              done: 200,
+                              done: _sumDoneMinutes,
                               title: 'Minutes utilized',
                             ),
                           ],
@@ -233,40 +342,4 @@ class _ActivityItem {
   }
 }
 
-class _RadialPainter extends CustomPainter {
-  final double percent; // 0.0 - 1.0
-
-  _RadialPainter(this.percent);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = (size.width / 2) - 6;
-
-    final basePaint = Paint()
-      ..color = Colors.grey.shade300
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 12;
-
-    final progressPaint = Paint()
-      ..shader = SweepGradient(
-        startAngle: -3.14 / 2,
-        endAngle: -3.14 / 2 + 2 * 3.14 * percent,
-        colors: [Colors.blue, Colors.lightBlueAccent],
-      ).createShader(Rect.fromCircle(center: center, radius: radius))
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 12
-      ..strokeCap = StrokeCap.round;
-
-    canvas.drawCircle(center, radius, basePaint);
-
-    final rect = Rect.fromCircle(center: center, radius: radius);
-    final startAngle = -3.14 / 2;
-    final sweep = 2 * 3.14 * percent;
-    canvas.drawArc(rect, startAngle, sweep, false, progressPaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _RadialPainter oldDelegate) =>
-      oldDelegate.percent != percent;
-}
+// _RadialPainter removed — radial drawing provided by RadialBarWidget in widgets/
