@@ -1,114 +1,136 @@
-FunctionDeclaration(
-  'logDailyActivities',
-  'Log multiple daily activities including count-based and time-based activities in a single call',
-  parameters: <String, Schema>{
-    'countActivities': Schema.array(
-      description: 'List of count-based activities to log',
-      items: Schema.object(
-        properties: {
-          'activityName': Schema.string(description: 'Name of the count activity'),
-          'count': Schema.number(description: 'Count value'),
-          'timestampStr': Schema.string(description: 'Timestamp in format: yyyy-MM-dd HH:mm:ss', nullable: true),
-        },
-      ),
-    ),
-    'timeActivities': Schema.array(
-      description: 'List of time-based activities to log',
-      items: Schema.object(
-        properties: {
-          'activityName': Schema.string(description: 'Name of the time activity'),
-          'startStr': Schema.string(description: 'Start time in format: yyyy-MM-dd HH:mm:ss'),
-          'endStr': Schema.string(description: 'End time in format: yyyy-MM-dd HH:mm:ss'),
-          'productiveMinutes': Schema.number(description: 'Productive minutes spent', nullable: true),
-        },
-      ),
-    ),
-  },
-),
-Implementation function for this tool:
+Scenario 4: Data Correction
+User: "I made a mistake in my last study entry"
+Agent should:
+1.	Call removeLastRecord() for the study activity
+2.	Ask for correct details to add new record
+3.	Call addTimeActivityRecord() with corrected information
 
-dart
-Future<Map<String, dynamic>> logDailyActivities({
-  required List<Map<String, dynamic>> countActivities,
-  required List<Map<String, dynamic>> timeActivities,
+
+Future<Map<String, dynamic>> correctLastActivityRecord({
+  required String activityName,
+  Map<String, dynamic>? correctionDetails,
 }) async {
-  final results = {
-    'successful': [],
-    'failed': [],
-  };
+  try {
+    // Step 1: Find the activity
+    final activities = activityBox.values.where((a) => a.name.toLowerCase() == activityName.toLowerCase()).toList();
+    
+    if (activities.isEmpty) {
+      return {
+        'success': false,
+        'action': 'find_activity',
+        'error': 'Activity not found: $activityName',
+        'suggestions': _findSimilarActivityNames(activityName),
+      };
+    }
 
-  // Process count activities
-  for (var activity in countActivities) {
-    try {
-      final activityId = _findActivityIdByName(activity['activityName'], ActivityType.count);
-      final timestamp = activity['timestampStr'] ?? _getCurrentTimestamp();
-      
-      final recordId = addCountActivityRecord(
-        parentId: activityId,
-        timestampStr: timestamp,
-        count: activity['count'],
+    final activity = activities.first;
+    final activityId = activity.id;
+
+    // Step 2: Remove the last record
+    final removalSuccess = removeLastRecord(activityId);
+    
+    if (!removalSuccess) {
+      return {
+        'success': false,
+        'action': 'remove_record',
+        'error': 'No records found to remove for $activityName',
+        'activityId': activityId,
+      };
+    }
+
+    // Step 3: If correction details provided, add corrected record
+    Map<String, dynamic>? addedRecord;
+    if (correctionDetails != null) {
+      addedRecord = await _addCorrectedRecord(activity, correctionDetails);
+    }
+
+    return {
+      'success': true,
+      'action': removalSuccess && addedRecord != null ? 'remove_and_add' : 'remove_only',
+      'activityName': activity.name,
+      'activityType': activity.type == ActivityType.time ? 'time' : 'count',
+      'activityId': activityId,
+      'removedRecord': true,
+      'addedRecord': addedRecord,
+      'message': _generateSuccessMessage(activity, correctionDetails != null),
+    };
+
+  } catch (e) {
+    return {
+      'success': false,
+      'action': 'error',
+      'error': 'Failed to correct record: ${e.toString()}',
+      'activityName': activityName,
+    };
+  }
+}
+
+// Helper method to add corrected record
+Future<Map<String, dynamic>?> _addCorrectedRecord(Activity activity, Map<String, dynamic> correctionDetails) async {
+  try {
+    if (activity.type == ActivityType.time) {
+      // Validate required fields for time activity
+      if (correctionDetails['newStartStr'] == null || correctionDetails['newEndStr'] == null) {
+        throw Exception('Missing required fields for time activity: startStr and endStr');
+      }
+
+      final productiveMinutes = correctionDetails['newProductiveMinutes'] ?? 
+          _calculateMinutesBetween(correctionDetails['newStartStr'], correctionDetails['newEndStr']);
+
+      final recordId = addTimeActivityRecord(
+        parentId: activity.id,
+        startStr: correctionDetails['newStartStr'],
+        expectedEndStr: correctionDetails['newEndStr'],
+        productiveMinutes: productiveMinutes,
+        actualEndStr: correctionDetails['newEndStr'],
       );
+
+      return {
+        'type': 'time',
+        'recordId': recordId,
+        'start': correctionDetails['newStartStr'],
+        'end': correctionDetails['newEndStr'],
+        'productiveMinutes': productiveMinutes,
+      };
+    } else {
+      // Count activity
+      final timestamp = correctionDetails['newTimestampStr'] ?? _getCurrentTimestamp();
       
-      results['successful'].add({
+      if (correctionDetails['newCount'] == null) {
+        throw Exception('Missing required field for count activity: count');
+      }
+
+      final recordId = addCountActivityRecord(
+        parentId: activity.id,
+        timestampStr: timestamp,
+        count: correctionDetails['newCount'],
+      );
+
+      return {
         'type': 'count',
-        'activity': activity['activityName'],
         'recordId': recordId,
         'timestamp': timestamp,
-        'count': activity['count'],
-      });
-    } catch (e) {
-      results['failed'].add({
-        'type': 'count',
-        'activity': activity['activityName'],
-        'error': e.toString(),
-      });
+        'count': correctionDetails['newCount'],
+      };
     }
+  } catch (e) {
+    throw Exception('Failed to add corrected record: ${e.toString()}');
   }
-
-  // Process time activities
-  for (var activity in timeActivities) {
-    try {
-      final activityId = _findActivityIdByName(activity['activityName'], ActivityType.time);
-      final productiveMinutes = activity['productiveMinutes'] ?? 
-          _calculateMinutesBetween(activity['startStr'], activity['endStr']);
-      
-      final recordId = addTimeActivityRecord(
-        parentId: activityId,
-        startStr: activity['startStr'],
-        expectedEndStr: activity['endStr'],
-        productiveMinutes: productiveMinutes,
-        actualEndStr: activity['endStr'],
-      );
-      
-      results['successful'].add({
-        'type': 'time',
-        'activity': activity['activityName'],
-        'recordId': recordId,
-        'start': activity['startStr'],
-        'end': activity['endStr'],
-        'minutes': productiveMinutes,
-      });
-    } catch (e) {
-      results['failed'].add({
-        'type': 'time',
-        'activity': activity['activityName'],
-        'error': e.toString(),
-      });
-    }
-  }
-
-  return results;
 }
 
-// Helper methods
-String _findActivityIdByName(String name, ActivityType type) {
-  final activities = activityBox.values.where((a) => a.name == name && a.type == type).toList();
-  if (activities.isEmpty) {
-    throw Exception('Activity not found: $name (${type == ActivityType.time ? 'time' : 'count'})');
+// Helper method to generate success message
+String _generateSuccessMessage(Activity activity, bool recordAdded) {
+  final activityType = activity.type == ActivityType.time ? 'time' : 'count';
+  
+  if (recordAdded) {
+    return 'Successfully removed the last ${activity.name} record and added the corrected version.';
+  } else {
+    return 'Successfully removed the last ${activity.name} record. '
+           'You can now add the correct information when ready.';
   }
-  return activities.first.id;
 }
 
+// Helper methods (reuse from previous implementation)
 String _getCurrentTimestamp() {
   return DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
 }
@@ -119,24 +141,14 @@ int _calculateMinutesBetween(String startStr, String endStr) {
   final end = format.parseStrict(endStr);
   return end.difference(start).inMinutes;
 }
-Example usage by the agent for the user query:
 
-dart
-// Agent would call this based on user input
-final result = await logDailyActivities(
-  countActivities: [
-    {
-      'activityName': 'Pushups',
-      'count': 50,
-      'timestampStr': '2023-10-05 15:30:00', // Current time
-    }
-  ],
-  timeActivities: [
-    {
-      'activityName': 'Study',
-      'startStr': '2023-10-05 14:00:00',
-      'endStr': '2023-10-05 16:00:00',
-      'productiveMinutes': 120,
-    }
-  ],
-);
+List<String> _findSimilarActivityNames(String searchName) {
+  final allNames = activityBox.values.map((a) => a.name).toList();
+  final searchLower = searchName.toLowerCase();
+  
+  return allNames.where((name) => 
+    name.toLowerCase().contains(searchLower) ||
+    searchLower.contains(name.toLowerCase())
+  ).toList();
+}
+

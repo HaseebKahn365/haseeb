@@ -9,6 +9,7 @@ import 'package:haseeb/models/activity.dart' as models_activity;
 import 'package:haseeb/providers/llm_tools.dart';
 import 'package:haseeb/repository/activity_manager.dart';
 import 'package:hive/hive.dart';
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ChatMessage {
@@ -484,6 +485,405 @@ class ChatNotifier extends StateNotifier<ChatState> {
           throw Exception('Invalid arguments for addActivity');
         }
 
+      case 'logDailyActivities':
+        try {
+          final args = call.args as Map<String, dynamic>;
+          final countActivities =
+              (args['countActivities'] as List<dynamic>?)
+                  ?.map((e) => e as Map<String, dynamic>)
+                  .toList() ??
+              [];
+          final timeActivities =
+              (args['timeActivities'] as List<dynamic>?)
+                  ?.map((e) => e as Map<String, dynamic>)
+                  .toList() ??
+              [];
+
+          // Open Hive boxes and create ActivityManager
+          final activityBox = await Hive.openBox<models_activity.Activity>(
+            'activities',
+          );
+          final timeBox = await Hive.openBox<models_activity.TimeActivity>(
+            'time_activities',
+          );
+          final countBox = await Hive.openBox<models_activity.CountActivity>(
+            'count_activities',
+          );
+          final manager = ActivityManager(
+            activityBox: activityBox,
+            timeActivityBox: timeBox,
+            countActivityBox: countBox,
+          );
+
+          final results = {
+            'successful': <Map<String, dynamic>>[],
+            'failed': <Map<String, dynamic>>[],
+          };
+
+          // Process count activities
+          for (final activityData in countActivities) {
+            try {
+              final activityName = activityData['activityName'] as String;
+              final count = (activityData['count'] as num).toInt();
+              final timestampStr =
+                  (activityData['timestampStr'] as String?) ??
+                  DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+
+              // Use ActivityManager's findActivityByKeyword method
+              final activityInfo = manager.findActivityByKeyword(activityName);
+              if (activityInfo['type'] != 'count') {
+                throw Exception(
+                  'Activity "$activityName" is not a count type activity',
+                );
+              }
+
+              final recordId = manager.addCountActivityRecord(
+                parentId: activityInfo['id'],
+                timestampStr: timestampStr,
+                count: count,
+              );
+
+              results['successful']!.add({
+                'type': 'count',
+                'activity': activityName,
+                'recordId': recordId,
+                'timestamp': timestampStr,
+                'count': count,
+              });
+
+              dev.log(
+                'logDailyActivities: Added count record for $activityName, recordId: $recordId',
+              );
+            } catch (e) {
+              results['failed']!.add({
+                'type': 'count',
+                'activity': activityData['activityName'],
+                'error': e.toString(),
+              });
+              dev.log(
+                'logDailyActivities: Failed to add count record for ${activityData['activityName']}: $e',
+              );
+            }
+          }
+
+          // Process time activities
+          for (final activityData in timeActivities) {
+            try {
+              final activityName = activityData['activityName'] as String;
+              final startStr = activityData['startStr'] as String;
+              final endStr = activityData['endStr'] as String;
+
+              // Calculate productive minutes if not provided
+              final providedMinutes =
+                  (activityData['productiveMinutes'] as num?)?.toInt();
+              final productiveMinutes =
+                  providedMinutes ??
+                  () {
+                    final format = DateFormat('yyyy-MM-dd HH:mm:ss');
+                    final start = format.parseStrict(startStr);
+                    final end = format.parseStrict(endStr);
+                    return end.difference(start).inMinutes;
+                  }();
+
+              // Use ActivityManager's findActivityByKeyword method
+              final activityInfo = manager.findActivityByKeyword(activityName);
+              if (activityInfo['type'] != 'time') {
+                throw Exception(
+                  'Activity "$activityName" is not a time type activity',
+                );
+              }
+
+              final recordId = manager.addTimeActivityRecord(
+                parentId: activityInfo['id'],
+                startStr: startStr,
+                expectedEndStr: endStr,
+                productiveMinutes: productiveMinutes,
+                actualEndStr: endStr,
+              );
+
+              results['successful']!.add({
+                'type': 'time',
+                'activity': activityName,
+                'recordId': recordId,
+                'start': startStr,
+                'end': endStr,
+                'minutes': productiveMinutes,
+              });
+
+              dev.log(
+                'logDailyActivities: Added time record for $activityName, recordId: $recordId',
+              );
+            } catch (e) {
+              results['failed']!.add({
+                'type': 'time',
+                'activity': activityData['activityName'],
+                'error': e.toString(),
+              });
+              dev.log(
+                'logDailyActivities: Failed to add time record for ${activityData['activityName']}: $e',
+              );
+            }
+          }
+
+          dev.log(
+            'logDailyActivities: Completed - ${results['successful']!.length} successful, ${results['failed']!.length} failed',
+          );
+          return jsonEncode(results);
+        } catch (e) {
+          dev.log('logDailyActivities: error -> $e');
+          throw Exception('Invalid arguments for logDailyActivities: $e');
+        }
+
+      case 'checkActivityProgress':
+        try {
+          final args = call.args as Map<String, dynamic>;
+          final activityName = args['activityName'] as String;
+          final timeframe = (args['timeframe'] as String? ?? 'all_time')
+              .toLowerCase();
+
+          // Open Hive boxes and create ActivityManager
+          final activityBox = await Hive.openBox<models_activity.Activity>(
+            'activities',
+          );
+          final timeBox = await Hive.openBox<models_activity.TimeActivity>(
+            'time_activities',
+          );
+          final countBox = await Hive.openBox<models_activity.CountActivity>(
+            'count_activities',
+          );
+          final manager = ActivityManager(
+            activityBox: activityBox,
+            timeActivityBox: timeBox,
+            countActivityBox: countBox,
+          );
+
+          // Find the activity using ActivityManager's method
+          final activityInfo = manager.findActivityByKeyword(activityName);
+          final activityId = activityInfo['id'] as String;
+          final activityType = activityInfo['type'] as String;
+
+          // Get detailed activity information
+          final detailedInfo = manager.getActivityInfo(activityId);
+
+          // Build natural language response based on timeframe
+          final StringBuffer response = StringBuffer();
+          response.writeln(
+            '## ${detailedInfo['activity_name']} Progress Report',
+          );
+          response.writeln();
+
+          final timePeriods =
+              detailedInfo['time_periods'] as Map<String, dynamic>;
+
+          if (timeframe == 'all_time') {
+            if (activityType == 'time') {
+              final totalMinutes = detailedInfo['total_minutes'] as int;
+              final totalRecords = detailedInfo['total_records'] as int;
+              response.writeln('**Overall Progress:**');
+              response.writeln(
+                '- Total time logged: ${(totalMinutes / 60).toStringAsFixed(1)} hours ($totalMinutes minutes)',
+              );
+              response.writeln('- Total sessions: $totalRecords');
+              if (totalRecords > 0) {
+                response.writeln(
+                  '- Average session: ${(totalMinutes / totalRecords).toStringAsFixed(1)} minutes',
+                );
+              }
+            } else {
+              final totalCount = detailedInfo['total_count'] as int;
+              final totalRecords = detailedInfo['total_records'] as int;
+              response.writeln('**Overall Progress:**');
+              response.writeln('- Total count: $totalCount');
+              response.writeln('- Total sessions: $totalRecords');
+              if (totalRecords > 0) {
+                response.writeln(
+                  '- Average per session: ${(totalCount / totalRecords).toStringAsFixed(1)}',
+                );
+              }
+            }
+          } else {
+            final periodData = timePeriods[timeframe] as Map<String, dynamic>?;
+            if (periodData != null) {
+              final periodName = timeframe
+                  .replaceAll('_', ' ')
+                  .replaceAll('this ', '');
+              response.writeln(
+                '**${periodName.substring(0, 1).toUpperCase()}${periodName.substring(1)} Progress:**',
+              );
+
+              if (activityType == 'time') {
+                final minutes = periodData['minutes'] as int;
+                final records = periodData['records'] as int;
+                response.writeln(
+                  '- Time logged: ${(minutes / 60).toStringAsFixed(1)} hours ($minutes minutes)',
+                );
+                response.writeln('- Sessions: $records');
+                if (records > 0) {
+                  response.writeln(
+                    '- Average session: ${(minutes / records).toStringAsFixed(1)} minutes',
+                  );
+                }
+              } else {
+                final count = periodData['count'] as int;
+                final records = periodData['records'] as int;
+                response.writeln('- Count: $count');
+                response.writeln('- Sessions: $records');
+                if (records > 0) {
+                  response.writeln(
+                    '- Average per session: ${(count / records).toStringAsFixed(1)}',
+                  );
+                }
+              }
+            } else {
+              response.writeln('No data found for the requested timeframe.');
+            }
+          }
+
+          dev.log(
+            'checkActivityProgress: Generated progress report for $activityName ($timeframe)',
+          );
+          return response.toString();
+        } catch (e) {
+          dev.log('checkActivityProgress: error -> $e');
+          throw Exception('Unable to check activity progress: $e');
+        }
+
+      case 'correctLastActivityRecord':
+        try {
+          final args = call.args as Map<String, dynamic>;
+          final activityName = args['activityName'] as String;
+          final correctionDetails =
+              args['correctionDetails'] as Map<String, dynamic>?;
+
+          // Open Hive boxes and create ActivityManager
+          final activityBox = await Hive.openBox<models_activity.Activity>(
+            'activities',
+          );
+          final timeBox = await Hive.openBox<models_activity.TimeActivity>(
+            'time_activities',
+          );
+          final countBox = await Hive.openBox<models_activity.CountActivity>(
+            'count_activities',
+          );
+          final manager = ActivityManager(
+            activityBox: activityBox,
+            timeActivityBox: timeBox,
+            countActivityBox: countBox,
+          );
+
+          // Step 1: Find the activity using existing method
+          final activityInfo = manager.findActivityByKeyword(activityName);
+          final activityId = activityInfo['id'] as String;
+          final activityType = activityInfo['type'] as String;
+
+          // Step 2: Remove the last record using existing method
+          final removalSuccess = manager.removeLastRecord(activityId);
+
+          if (!removalSuccess) {
+            return jsonEncode({
+              'success': false,
+              'action': 'remove_record',
+              'error': 'No records found to remove for $activityName',
+              'activityId': activityId,
+            });
+          }
+
+          // Step 3: If correction details provided, add corrected record
+          Map<String, dynamic>? addedRecord;
+          if (correctionDetails != null) {
+            try {
+              if (activityType == 'time') {
+                // Validate required fields for time activity
+                if (correctionDetails['newStartStr'] == null ||
+                    correctionDetails['newEndStr'] == null) {
+                  throw Exception(
+                    'Missing required fields for time activity: newStartStr and newEndStr',
+                  );
+                }
+
+                final productiveMinutes =
+                    correctionDetails['newProductiveMinutes'] as int? ??
+                    _calculateMinutesBetween(
+                      correctionDetails['newStartStr'] as String,
+                      correctionDetails['newEndStr'] as String,
+                    );
+
+                final recordId = manager.addTimeActivityRecord(
+                  parentId: activityId,
+                  startStr: correctionDetails['newStartStr'] as String,
+                  expectedEndStr: correctionDetails['newEndStr'] as String,
+                  productiveMinutes: productiveMinutes,
+                  actualEndStr: correctionDetails['newEndStr'] as String,
+                );
+
+                addedRecord = {
+                  'type': 'time',
+                  'recordId': recordId,
+                  'start': correctionDetails['newStartStr'],
+                  'end': correctionDetails['newEndStr'],
+                  'productiveMinutes': productiveMinutes,
+                };
+              } else {
+                // Count activity
+                final timestamp =
+                    correctionDetails['newTimestampStr'] as String? ??
+                    DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+
+                if (correctionDetails['newCount'] == null) {
+                  throw Exception(
+                    'Missing required field for count activity: newCount',
+                  );
+                }
+
+                final recordId = manager.addCountActivityRecord(
+                  parentId: activityId,
+                  timestampStr: timestamp,
+                  count: (correctionDetails['newCount'] as num).toInt(),
+                );
+
+                addedRecord = {
+                  'type': 'count',
+                  'recordId': recordId,
+                  'timestamp': timestamp,
+                  'count': correctionDetails['newCount'],
+                };
+              }
+            } catch (e) {
+              return jsonEncode({
+                'success': false,
+                'action': 'add_corrected_record',
+                'error': 'Failed to add corrected record: ${e.toString()}',
+                'activityName': activityName,
+                'removalCompleted': true,
+              });
+            }
+          }
+
+          // Generate success message
+          final message = addedRecord != null
+              ? 'Successfully removed the last ${activityInfo['name']} record and added the corrected version.'
+              : 'Successfully removed the last ${activityInfo['name']} record. You can now add the correct information when ready.';
+
+          return jsonEncode({
+            'success': true,
+            'action': addedRecord != null ? 'remove_and_add' : 'remove_only',
+            'activityName': activityInfo['name'],
+            'activityType': activityType,
+            'activityId': activityId,
+            'removedRecord': true,
+            'addedRecord': addedRecord,
+            'message': message,
+          });
+        } catch (e) {
+          dev.log('correctLastActivityRecord: error -> $e');
+          return jsonEncode({
+            'success': false,
+            'action': 'error',
+            'error': 'Failed to correct record: ${e.toString()}',
+            'activityName': call.args['activityName'],
+          });
+        }
+
       case 'markdownWidget':
         final args = call.args;
         final numberA = args['numberA'];
@@ -494,6 +894,14 @@ class ChatNotifier extends StateNotifier<ChatState> {
       default:
         throw Exception('Unknown function: ${call.name}');
     }
+  }
+
+  // Helper method to calculate minutes between two time strings
+  int _calculateMinutesBetween(String startStr, String endStr) {
+    final format = DateFormat('yyyy-MM-dd HH:mm:ss');
+    final start = format.parseStrict(startStr);
+    final end = format.parseStrict(endStr);
+    return end.difference(start).inMinutes;
   }
 
   Future<void> _saveMessages() async {

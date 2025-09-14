@@ -102,6 +102,19 @@ final toolsForLLM = [
       },
     ),
     FunctionDeclaration(
+      'checkActivityProgress',
+      'Get progress information for a specific activity and timeframe, returns natural language explanation',
+      parameters: <String, Schema>{
+        'activityName': Schema.string(
+          description: 'Name of the activity to check progress for',
+        ),
+        'timeframe': Schema.string(
+          description:
+              'Time period to check: "today", "this_week", "this_month", "this_year", or "all_time"',
+        ),
+      },
+    ),
+    FunctionDeclaration(
       'renderMarkdown',
       'Render markdown-formatted content inline',
       parameters: <String, Schema>{
@@ -114,6 +127,44 @@ final toolsForLLM = [
       parameters: <String, Schema>{
         'data': Schema.string(description: 'CSV formatted data'),
         'filename': Schema.string(description: 'Filename to use for export'),
+      },
+    ),
+    FunctionDeclaration(
+      'correctLastActivityRecord',
+      'Remove the last record for an activity and optionally add a corrected version',
+      parameters: <String, Schema>{
+        'activityName': Schema.string(
+          description: 'Name of the activity to correct',
+        ),
+        'correctionDetails': Schema.object(
+          description: 'Optional correction details to add after removal',
+          nullable: true,
+          properties: {
+            'newStartStr': Schema.string(
+              description:
+                  'New start time for time activities (yyyy-MM-dd HH:mm:ss)',
+              nullable: true,
+            ),
+            'newEndStr': Schema.string(
+              description:
+                  'New end time for time activities (yyyy-MM-dd HH:mm:ss)',
+              nullable: true,
+            ),
+            'newProductiveMinutes': Schema.number(
+              description: 'New productive minutes for time activities',
+              nullable: true,
+            ),
+            'newTimestampStr': Schema.string(
+              description:
+                  'New timestamp for count activities (yyyy-MM-dd HH:mm:ss)',
+              nullable: true,
+            ),
+            'newCount': Schema.number(
+              description: 'New count value for count activities',
+              nullable: true,
+            ),
+          },
+        ),
       },
     ),
   ]),
