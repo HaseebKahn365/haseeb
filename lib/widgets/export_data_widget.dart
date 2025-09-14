@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 class ExportDataWidget extends StatelessWidget {
@@ -40,7 +43,7 @@ class ExportDataWidget extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'Ready to export your activity data. This will create a CSV file with all your activity information.',
+              'Ready to export your activity data as a CSV file. The file will be saved and shared for easy importing into spreadsheet applications.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
             const SizedBox(height: 16),
@@ -49,8 +52,8 @@ class ExportDataWidget extends StatelessWidget {
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: () => _exportData(context),
-                    icon: const Icon(Icons.share),
-                    label: const Text('Share Data'),
+                    icon: const Icon(Icons.file_download),
+                    label: const Text('Export CSV File'),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
@@ -73,10 +76,21 @@ class ExportDataWidget extends StatelessWidget {
 
   Future<void> _exportData(BuildContext context) async {
     try {
-      // In a real implementation, this would save to a file first
-      // For now, we'll just share the data directly
-      await Share.share(
-        data,
+      // Get the app's temporary directory
+      final directory = await getTemporaryDirectory();
+
+      // Ensure filename has .csv extension
+      final csvFilename = filename.endsWith('.csv')
+          ? filename
+          : '$filename.csv';
+
+      // Create the CSV file
+      final file = File('${directory.path}/$csvFilename');
+      await file.writeAsString(data);
+
+      // Share the file
+      await Share.shareXFiles(
+        [XFile(file.path)],
         subject: 'Activity Data Export',
         sharePositionOrigin: const Rect.fromLTWH(0, 0, 10, 10),
       );
@@ -84,7 +98,7 @@ class ExportDataWidget extends StatelessWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Data exported successfully!'),
+            content: Text('CSV file exported successfully!'),
             backgroundColor: Theme.of(context).colorScheme.primaryContainer,
           ),
         );
