@@ -1,10 +1,12 @@
 import 'dart:developer' as dev;
 
+import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:haseeb/models/activity.dart';
 import 'package:haseeb/providers/chat_provider.dart';
+import 'package:haseeb/services/audio_transcription_service.dart';
 
 import '../widgets/activity_card_widget.dart';
 import '../widgets/export_data_widget.dart';
@@ -19,6 +21,8 @@ class AgentChatScreen extends ConsumerStatefulWidget {
 
 double _scrollPosition = 0;
 
+enum AudioUiState { idle, recording, transcribing }
+
 class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController(
@@ -31,8 +35,23 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
   @override
   void initState() {
     super.initState();
-    // The provider will initialize automatically
+    // Initialize a lightweight generative model for audio transcription
+    try {
+      final firebaseAI = FirebaseAI.googleAI();
+      final model = firebaseAI.generativeModel(
+        systemInstruction: Content.system(''),
+        model: 'gemini-2.5-flash',
+      );
+      _audioService = AudioTranscriptionService(model);
+    } catch (e) {
+      dev.log(
+        'initState: failed to initialize audio transcription model -> $e',
+      );
+    }
   }
+
+  late AudioTranscriptionService _audioService;
+  AudioUiState _audioUiState = AudioUiState.idle;
 
   @override
   void dispose() {
@@ -61,6 +80,67 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
     await chatNotifier.sendMessage(text);
     _controller.clear();
     _scrollToBottom();
+  }
+
+  Future<void> _startAudioRecording() async {
+    // removed: replaced by _toggleRecording
+  }
+
+  Future<void> _toggleRecording() async {
+    dev.log('_toggleRecording: current UI state=$_audioUiState');
+
+    if (_audioUiState == AudioUiState.transcribing) {
+      // don't allow toggles while transcribing
+      dev.log('_toggleRecording: ignored, transcribing in progress');
+      return;
+    }
+
+    if (_audioUiState == AudioUiState.recording) {
+      // stop recording and immediately show transcribing state
+      setState(() {
+        _audioUiState = AudioUiState.transcribing;
+      });
+
+      try {
+        final text = await _audioService.stopAndTranscribe();
+        if (!mounted) return;
+
+        _controller.text = text;
+        _controller.selection = TextSelection.fromPosition(
+          TextPosition(offset: text.length),
+        );
+
+        dev.log(
+          '_toggleRecording: transcription inserted, length=${text.length}',
+        );
+      } catch (e) {
+        dev.log('_toggleRecording: stop/transcribe error -> $e');
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Transcription failed: $e')));
+        }
+      } finally {
+        if (mounted) {
+          setState(() => _audioUiState = AudioUiState.idle);
+        }
+      }
+    } else {
+      // idle -> start recording
+      try {
+        await _audioService.startRecording();
+        if (!mounted) return;
+        setState(() => _audioUiState = AudioUiState.recording);
+        dev.log('_toggleRecording: recording started');
+      } catch (e) {
+        dev.log('_toggleRecording: startRecording error -> $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not start recording: $e')),
+          );
+        }
+      }
+    }
   }
 
   @override
@@ -255,7 +335,9 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
 
   Widget _buildInputArea(bool isStreaming) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(
+        5,
+      ), // Reduced padding for a slightly smaller/shrunk appearance
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         border: Border(
@@ -269,6 +351,13 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
           Expanded(
             child: TextField(
               controller: _controller,
+              maxLines:
+                  null, // Allows automatic expansion for multi-line input like WhatsApp
+              minLines: 1, // Ensures it starts as a single line
+              keyboardType: TextInputType
+                  .multiline, // Enables multi-line keyboard behavior
+              textInputAction: TextInputAction
+                  .newline, // Allows new lines on enter; send via button
               decoration: InputDecoration(
                 hintText: 'Type your message...',
                 border: OutlineInputBorder(
@@ -279,14 +368,57 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
                   context,
                 ).colorScheme.surfaceContainerHighest,
               ),
-              onSubmitted: (_) => _sendMessage(),
+              // Removed onSubmitted to prevent accidental sends on enter; rely on button
             ),
           ),
           const SizedBox(width: 8),
+
+          // Microphone button for recording
           FloatingActionButton(
-            onPressed: isStreaming ? null : _sendMessage,
-            child: const Icon(Icons.send),
+            mini: true,
+            elevation: 1,
+            onPressed:
+                (isStreaming || _audioUiState == AudioUiState.transcribing)
+                ? null
+                : _toggleRecording,
+            tooltip: _audioUiState == AudioUiState.recording
+                ? 'Stop recording'
+                : _audioUiState == AudioUiState.transcribing
+                ? 'Transcribing...'
+                : 'Record audio message',
+            backgroundColor: _audioUiState == AudioUiState.recording
+                ? Colors.redAccent
+                : _audioUiState == AudioUiState.transcribing
+                ? Colors.orangeAccent
+                : null,
+            child: Icon(
+              _audioUiState == AudioUiState.recording
+                  ? Icons.stop
+                  : _audioUiState == AudioUiState.transcribing
+                  ? Icons.hourglass_top
+                  : Icons.mic,
+            ),
           ),
+          const SizedBox(width: 8),
+          (isStreaming)
+              ? Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: SizedBox(
+                    width: 36,
+                    height: 36,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ),
+                )
+              : FloatingActionButton(
+                  elevation: 1,
+                  onPressed: isStreaming ? null : _sendMessage,
+                  child: const Icon(Icons.send),
+                ),
         ],
       ),
     );
