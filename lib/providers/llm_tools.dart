@@ -233,6 +233,35 @@ final toolsForLLM = [
       },
     ),
     FunctionDeclaration(
+      'updateWishlistItem',
+      'Update fields of an existing wishlist item (goal)',
+      parameters: <String, Schema>{
+        'id': Schema.string(description: 'ID of the wishlist item to update'),
+        'updates': Schema.object(
+          description: 'Fields to update',
+          properties: {
+            'title': Schema.string(description: 'New title', nullable: true),
+            'description': Schema.string(
+              description: 'New description',
+              nullable: true,
+            ),
+            'dueDateStr': Schema.string(
+              description: 'New due date in format: yyyy-MM-dd',
+              nullable: true,
+            ),
+            'count': Schema.number(
+              description: 'New remaining count value',
+              nullable: true,
+            ),
+            'duration': Schema.number(
+              description: 'New remaining duration in minutes',
+              nullable: true,
+            ),
+          },
+        ),
+      },
+    ),
+    FunctionDeclaration(
       'removeActivity',
       'Remove an activity and all its records. Uses ActivityManager.removeActivity',
       parameters: <String, Schema>{

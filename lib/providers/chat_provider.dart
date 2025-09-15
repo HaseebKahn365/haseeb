@@ -1704,6 +1704,101 @@ class ChatNotifier extends StateNotifier<ChatState> {
           });
         }
 
+      case 'updateWishlistItem':
+        try {
+          final args = call.args as Map<String, dynamic>;
+          final id = (args['id'] as String?)?.trim();
+          final updates = (args['updates'] as Map<String, dynamic>?) ?? {};
+
+          if (id == null || id.isEmpty) {
+            return jsonEncode({'success': false, 'error': 'id is required'});
+          }
+
+          final repo = await WishlistRepository.init();
+          final item = repo.getItem(id);
+          if (item == null) {
+            return jsonEncode({
+              'success': false,
+              'error': 'Wishlist item not found',
+              'id': id,
+            });
+          }
+
+          // Apply updates
+          if (updates.containsKey('title')) {
+            final t = updates['title'] as String?;
+            if (t != null) item.title = t;
+          }
+          if (updates.containsKey('description')) {
+            final d = updates['description'] as String?;
+            if (d != null) item.description = d;
+          }
+          if (updates.containsKey('dueDateStr')) {
+            final ds = updates['dueDateStr'] as String?;
+            if (ds != null) {
+              try {
+                item.dueDate = DateFormat('yyyy-MM-dd').parseStrict(ds);
+              } catch (e) {
+                return jsonEncode({
+                  'success': false,
+                  'error': 'Invalid dueDateStr format, expected yyyy-MM-dd',
+                  'details': e.toString(),
+                });
+              }
+            }
+          }
+          if (updates.containsKey('count')) {
+            final c = updates['count'];
+            if (c is num)
+              item.count = c.toInt();
+            else if (c is String)
+              item.count = int.tryParse(c);
+          }
+          if (updates.containsKey('duration')) {
+            final d = updates['duration'];
+            if (d is num)
+              item.duration = d.toInt();
+            else if (d is String)
+              item.duration = int.tryParse(d);
+          }
+
+          // Persist changes
+          await item.save();
+
+          // Render summary
+          final md = StringBuffer();
+          md.writeln('# Wishlist Item Updated');
+          md.writeln();
+          md.writeln('- **ID:** `${item.id}`');
+          md.writeln('- **Title:** ${item.title}');
+          md.writeln('- **Description:** ${item.description}');
+          md.writeln(
+            '- **Due Date:** ${DateFormat('yyyy-MM-dd').format(item.dueDate)}',
+          );
+          md.writeln('- **Type:** ${item.type.toUpperCase()}');
+          if (item.count != null) md.writeln('- **Count:** ${item.count}');
+          if (item.duration != null)
+            md.writeln('- **Duration (min):** ${item.duration}');
+
+          final widgetMessage = ChatMessage(
+            text: '',
+            isUser: false,
+            timestamp: DateTime.now(),
+            widgetType: 'renderMarkdown',
+            widgetData: {'content': md.toString()},
+          );
+          addMessage(widgetMessage);
+
+          return jsonEncode({'success': true, 'id': item.id});
+        } catch (e) {
+          dev.log('updateWishlistItem: error -> $e');
+          return jsonEncode({
+            'success': false,
+            'error': e.toString(),
+            'args': call.args,
+          });
+        }
+
       default:
         throw Exception('Unknown function: ${call.name}');
     }
