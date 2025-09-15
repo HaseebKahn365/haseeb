@@ -6,8 +6,10 @@ import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:haseeb/models/activity.dart' as models_activity;
+import 'package:haseeb/models/wishlist_item.dart';
 import 'package:haseeb/providers/llm_tools.dart';
 import 'package:haseeb/repository/activity_manager.dart';
+import 'package:haseeb/repository/wishlist_repository.dart';
 import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1574,6 +1576,133 @@ class ChatNotifier extends StateNotifier<ChatState> {
         final numberB = args['numberB'];
         final result = args['result'];
         return '**Calculation Result:**\n\n- First number: $numberA\n- Second number: $numberB\n- **Sum: $result**';
+
+      case 'createWishlistItem':
+        try {
+          final args = call.args as Map<String, dynamic>;
+          final title = (args['title'] as String?)?.trim() ?? '';
+          final description = (args['description'] as String?)?.trim() ?? '';
+          final dueDateStr = (args['dueDateStr'] as String?)?.trim() ?? '';
+          final typeStr = (args['type'] as String?)?.toLowerCase() ?? 'count';
+          final countVal = args['count'];
+          final durationVal = args['duration'];
+
+          if (title.isEmpty || dueDateStr.isEmpty) {
+            throw Exception('title and dueDateStr are required');
+          }
+
+          // Parse due date (yyyy-MM-dd)
+          DateTime dueDate;
+          try {
+            dueDate = DateFormat('yyyy-MM-dd').parseStrict(dueDateStr);
+          } catch (e) {
+            throw Exception('Invalid dueDateStr format, expected yyyy-MM-dd');
+          }
+
+          final id = DateTime.now().millisecondsSinceEpoch.toString();
+
+          // Build WishlistItem
+          final wishlistItem = WishlistItem(
+            id: id,
+            title: title,
+            description: description,
+            dueDate: dueDate,
+            type: typeStr,
+            count: (countVal is num)
+                ? countVal.toInt()
+                : (countVal is String ? int.tryParse(countVal) : null),
+            duration: (durationVal is num)
+                ? durationVal.toInt()
+                : (durationVal is String ? int.tryParse(durationVal) : null),
+          );
+
+          // Try to persist using WishlistRepository (which opens its own box)
+          try {
+            final repo = await WishlistRepository.init();
+            await repo.addItem(wishlistItem);
+
+            // Render markdown summary
+            final md = StringBuffer();
+            md.writeln('# Wishlist Item Created');
+            md.writeln();
+            md.writeln('- **ID:** `$id`');
+            md.writeln('- **Title:** $title');
+            md.writeln('- **Description:** $description');
+            md.writeln(
+              '- **Due Date:** ${DateFormat('yyyy-MM-dd').format(dueDate)}',
+            );
+            md.writeln('- **Type:** ${typeStr.toUpperCase()}');
+            if (wishlistItem.count != null)
+              md.writeln('- **Count Target:** ${wishlistItem.count}');
+            if (wishlistItem.duration != null)
+              md.writeln(
+                '- **Duration Target (min):** ${wishlistItem.duration}',
+              );
+
+            final widgetMessage = ChatMessage(
+              text: '',
+              isUser: false,
+              timestamp: DateTime.now(),
+              widgetType: 'renderMarkdown',
+              widgetData: {'content': md.toString()},
+            );
+            addMessage(widgetMessage);
+
+            return jsonEncode({'success': true, 'id': id, 'persisted': true});
+          } catch (e) {
+            dev.log('createWishlistItem: persist failed -> $e');
+            // Fallback to SharedPreferences
+            try {
+              final prefs = await SharedPreferences.getInstance();
+              final list = prefs.getStringList('agent_wishlist_fallback') ?? [];
+              final entry = jsonEncode({
+                'id': id,
+                'title': title,
+                'description': description,
+                'dueDate': dueDate.toIso8601String(),
+                'type': typeStr,
+                'count': wishlistItem.count,
+                'duration': wishlistItem.duration,
+              });
+              list.add(entry);
+              await prefs.setStringList('agent_wishlist_fallback', list);
+
+              final md = StringBuffer();
+              md.writeln('# Wishlist Item (Saved to fallback)');
+              md.writeln();
+              md.writeln('- **ID:** `$id`');
+              md.writeln('- **Title:** $title');
+              md.writeln(
+                '- **Due Date:** ${DateFormat('yyyy-MM-dd').format(dueDate)}',
+              );
+
+              final widgetMessage = ChatMessage(
+                text: '',
+                isUser: false,
+                timestamp: DateTime.now(),
+                widgetType: 'renderMarkdown',
+                widgetData: {'content': md.toString()},
+              );
+              addMessage(widgetMessage);
+
+              return jsonEncode({
+                'success': true,
+                'id': id,
+                'persisted': false,
+              });
+            } catch (spErr) {
+              dev.log('createWishlistItem: fallback failed -> $spErr');
+              throw Exception('Failed to persist wishlist item');
+            }
+          }
+        } catch (e) {
+          dev.log('createWishlistItem: error -> $e');
+          return jsonEncode({
+            'success': false,
+            'error': e.toString(),
+            'args': call.args,
+          });
+        }
 
       default:
         throw Exception('Unknown function: ${call.name}');

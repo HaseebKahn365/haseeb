@@ -224,7 +224,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
           child: Padding(
             padding: const EdgeInsets.all(12),
             child: message.isUser
-                ? Text(
+                ? SelectableText(
                     message.text,
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onPrimary,

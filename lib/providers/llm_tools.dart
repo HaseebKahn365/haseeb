@@ -61,6 +61,30 @@ final toolsForLLM = [
       },
     ),
     FunctionDeclaration(
+      'createWishlistItem',
+      'Create a new wishlist item (goal) for the user.',
+      parameters: <String, Schema>{
+        'title': Schema.string(
+          description: 'Title of the wishlist item (goal)',
+        ),
+        'description': Schema.string(description: 'Description of the goal'),
+        'dueDateStr': Schema.string(
+          description: 'Due date in format: yyyy-MM-dd',
+        ),
+        'type': Schema.string(
+          description: 'Type of goal: "count" or "duration"',
+        ),
+        'count': Schema.number(
+          description: 'Target count value for count-based goals',
+          nullable: true,
+        ),
+        'duration': Schema.number(
+          description: 'Target duration in minutes for duration-based goals',
+          nullable: true,
+        ),
+      },
+    ),
+    FunctionDeclaration(
       'logDailyActivities',
       'Log multiple daily activities including count-based and time-based activities in a single call',
       parameters: <String, Schema>{
