@@ -348,7 +348,6 @@ final toolsForLLM = [
         ),
       },
     ),
-    // New: listWishlistItems tool
     FunctionDeclaration(
       'listWishlistItems',
       'Retrieve all wishlist items with optional filters and return IDs and details',
@@ -368,6 +367,19 @@ final toolsForLLM = [
           nullable: true,
         ),
       },
+    ),
+    // New tools per guidelines
+    FunctionDeclaration(
+      'deleteWishlistItem',
+      'Delete a wishlist item by its ID (also used when a goal is completed)',
+      parameters: <String, Schema>{
+        'id': Schema.string(description: 'ID of the wishlist item to delete'),
+      },
+    ),
+    FunctionDeclaration(
+      'clearWishlist',
+      'Delete all wishlist items from the database',
+      parameters: <String, Schema>{},
     ),
   ]),
 ];

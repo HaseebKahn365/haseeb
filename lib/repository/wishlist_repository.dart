@@ -62,4 +62,9 @@ class WishlistRepository {
       return matches;
     }).toList();
   }
+
+  // New: clear all wishlist items
+  Future<void> clearAll() async {
+    await box.clear();
+  }
 }

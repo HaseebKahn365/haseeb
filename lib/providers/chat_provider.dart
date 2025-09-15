@@ -1759,6 +1759,43 @@ class ChatNotifier extends StateNotifier<ChatState> {
           });
         }
 
+      case 'deleteWishlistItem':
+        try {
+          final args = call.args as Map<String, dynamic>;
+          final id = (args['id'] as String?)?.trim();
+          if (id == null || id.isEmpty) {
+            return jsonEncode({'success': false, 'error': 'id is required'});
+          }
+          final repo = await WishlistRepository.init();
+          final existing = repo.getItem(id);
+          if (existing == null) {
+            return jsonEncode({
+              'success': false,
+              'error': 'Wishlist item not found',
+              'id': id,
+            });
+          }
+          await repo.deleteItem(id);
+          return jsonEncode({'success': true, 'deletedId': id});
+        } catch (e) {
+          dev.log('deleteWishlistItem: error -> $e');
+          return jsonEncode({
+            'success': false,
+            'error': e.toString(),
+            'args': call.args,
+          });
+        }
+
+      case 'clearWishlist':
+        try {
+          final repo = await WishlistRepository.init();
+          await repo.clearAll();
+          return jsonEncode({'success': true, 'message': 'Wishlist cleared'});
+        } catch (e) {
+          dev.log('clearWishlist: error -> $e');
+          return jsonEncode({'success': false, 'error': e.toString()});
+        }
+
       case 'updateWishlistItem':
         try {
           final args = call.args as Map<String, dynamic>;
