@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:haseeb/firebase_options.dart';
 import 'package:haseeb/models/activity.dart';
+import 'package:haseeb/models/wishlist_item.dart';
 import 'package:haseeb/providers/chat_provider.dart';
 import 'package:haseeb/providers/theme_provider.dart';
+import 'package:haseeb/repository/wishlist_repository.dart';
 import 'package:haseeb/screens/agent_chat_screen.dart';
 import 'package:haseeb/screens/home_screen.dart';
 import 'package:haseeb/screens/settings_screen.dart';
@@ -25,6 +27,13 @@ void main() async {
   Hive.registerAdapter(ActivityAdapter());
   Hive.registerAdapter(TimeActivityAdapter());
   Hive.registerAdapter(CountActivityAdapter());
+  Hive.registerAdapter(WishlistItemAdapter());
+  //display all the wishlist items
+  final repo = await WishlistRepository.init();
+  final items = repo.getAllItems();
+  for (var item in items) {
+    developer.log('Wishlist item: ${item.title}');
+  }
 
   runApp(const ProviderScope(child: MainApp()));
 }

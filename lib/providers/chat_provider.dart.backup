@@ -1725,13 +1725,91 @@ class ChatNotifier extends StateNotifier<ChatState> {
           }
 
           final repo = await WishlistRepository.init();
-          final items = repo.listItems(
+          final hiveItems = repo.listItems(
             includeCompleted: includeCompleted,
             type: type,
             dueBefore: dueBefore,
           );
 
-          final result = items
+          // Also read fallback items from SharedPreferences, if any
+          final List<Map<String, dynamic>> fallbackItems = [];
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            final list = prefs.getStringList('agent_wishlist_fallback') ?? [];
+            for (final entry in list) {
+              try {
+                final map = jsonDecode(entry) as Map<String, dynamic>;
+                // Normalize fields
+                final id = (map['id'] ?? '').toString();
+                final title = (map['title'] ?? '').toString();
+                final description = (map['description'] ?? '').toString();
+                final dueDateIso = (map['dueDate'] ?? '').toString();
+                final itemType = (map['type'] ?? '').toString();
+                final count = map['count'];
+                final duration = map['duration'];
+
+                if (id.isEmpty || title.isEmpty || dueDateIso.isEmpty) {
+                  continue;
+                }
+
+                DateTime? due;
+                try {
+                  due = DateTime.parse(dueDateIso);
+                } catch (_) {}
+                if (due == null) continue;
+
+                // Apply filters similar to repo.listItems
+                bool matches = true;
+                if (type != null && itemType != type) matches = false;
+                if (dueBefore != null && due.isAfter(dueBefore))
+                  matches = false;
+                if (!includeCompleted) {
+                  if (itemType == 'count' &&
+                      (count is num
+                              ? count.toInt()
+                              : int.tryParse(count?.toString() ?? '0') ?? 0) <=
+                          0) {
+                    matches = false;
+                  }
+                  if (itemType == 'duration' &&
+                      (duration is num
+                              ? duration.toInt()
+                              : int.tryParse(duration?.toString() ?? '0') ??
+                                    0) <=
+                          0) {
+                    matches = false;
+                  }
+                }
+                if (!matches) continue;
+
+                fallbackItems.add({
+                  'id': id,
+                  'title': title,
+                  'description': description,
+                  'dueDate': DateFormat('yyyy-MM-dd').format(due),
+                  'type': itemType,
+                  'count': (count is num)
+                      ? count.toInt()
+                      : (count is String ? int.tryParse(count) : null),
+                  'duration': (duration is num)
+                      ? duration.toInt()
+                      : (duration is String ? int.tryParse(duration) : null),
+                  'persisted': false,
+                });
+              } catch (e) {
+                dev.log(
+                  'listWishlistItems: failed to parse fallback entry -> $e',
+                );
+              }
+            }
+          } catch (e) {
+            dev.log(
+              'listWishlistItems: error reading SharedPreferences fallback -> $e',
+            );
+          }
+
+          // Build Hive results
+          final hiveResult = hiveItems
               .map(
                 (w) => {
                   'id': w.id,
@@ -1741,14 +1819,26 @@ class ChatNotifier extends StateNotifier<ChatState> {
                   'type': w.type,
                   'count': w.count,
                   'duration': w.duration,
+                  'persisted': true,
                 },
               )
               .toList();
+
+          // Merge, de-duplicating by id (prefer persisted/Hive over fallback)
+          final Map<String, Map<String, dynamic>> merged = {
+            for (final it in fallbackItems) it['id'] as String: it,
+          };
+          for (final it in hiveResult) {
+            merged[it['id'] as String] = it;
+          }
+
+          final result = merged.values.toList();
 
           return jsonEncode({
             'success': true,
             'items': result,
             'count': result.length,
+            'hasFallback': fallbackItems.isNotEmpty,
           });
         } catch (e) {
           dev.log('listWishlistItems: error -> $e');

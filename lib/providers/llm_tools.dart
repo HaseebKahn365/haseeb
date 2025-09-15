@@ -348,5 +348,26 @@ final toolsForLLM = [
         ),
       },
     ),
+    // New: listWishlistItems tool
+    FunctionDeclaration(
+      'listWishlistItems',
+      'Retrieve all wishlist items with optional filters and return IDs and details',
+      parameters: <String, Schema>{
+        'includeCompleted': Schema.boolean(
+          description:
+              'Whether to include completed/finished wishlist items (default: true)',
+          nullable: true,
+        ),
+        'type': Schema.string(
+          description: 'Optional filter: "count" or "duration"',
+          nullable: true,
+        ),
+        'dueBeforeStr': Schema.string(
+          description:
+              'Optional filter: only items due before this date (format: yyyy-MM-dd)',
+          nullable: true,
+        ),
+      },
+    ),
   ]),
 ];

@@ -32,4 +32,34 @@ class WishlistRepository {
   Future<void> deleteItem(String id) async {
     await box.delete(id);
   }
+
+  // New filtered listing method adhering to guidelines in repository/guidelines.md
+  List<WishlistItem> listItems({
+    bool includeCompleted = true,
+    String? type,
+    DateTime? dueBefore,
+  }) {
+    return box.values.where((item) {
+      bool matches = true;
+
+      if (type != null && item.type != type) {
+        matches = false;
+      }
+
+      if (dueBefore != null && item.dueDate.isAfter(dueBefore)) {
+        matches = false;
+      }
+
+      if (!includeCompleted) {
+        if (item.type == 'count' && (item.count ?? 0) <= 0) {
+          matches = false;
+        }
+        if (item.type == 'duration' && (item.duration ?? 0) <= 0) {
+          matches = false;
+        }
+      }
+
+      return matches;
+    }).toList();
+  }
 }
