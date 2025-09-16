@@ -1,6 +1,7 @@
 import 'dart:developer' as dev;
 
 import 'package:firebase_ai/firebase_ai.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -80,10 +81,6 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
     await chatNotifier.sendMessage(text);
     _controller.clear();
     _scrollToBottom();
-  }
-
-  Future<void> _startAudioRecording() async {
-    // removed: replaced by _toggleRecording
   }
 
   Future<void> _toggleRecording() async {
@@ -225,6 +222,10 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
             padding: const EdgeInsets.all(12),
             child: message.isUser
                 ? SelectableText(
+                    selectionControls: CupertinoTextSelectionControls(),
+                    selectionColor: Theme.of(context).colorScheme.error,
+                    cursorColor: Theme.of(context).colorScheme.error,
+
                     message.text,
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onPrimary,
@@ -295,6 +296,7 @@ class _AgentChatScreenState extends ConsumerState<AgentChatScreen> {
             final md = data['content']?.toString() ?? message.text;
             return MarkdownBody(
               data: md,
+              selectable: true,
               styleSheet: MarkdownStyleSheet(
                 p: TextStyle(color: Theme.of(context).colorScheme.onSurface),
               ),
